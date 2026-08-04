@@ -483,14 +483,11 @@ let _currentQIdx = 0;
 let _sessionStartTime = null;
 let _timerInterval    = null;
 
-// ── AOI 드웰(dwell) 상태 ──
-// 시선이 AOI에 1초 이상 머물러야 녹색 테두리 활성화
-let _aoiPrevHit   = new Set();  // 이전 프레임에서 시선이 있던 AOI id 집합
-let _aoiDwellTmr  = {};         // { aoiId → setTimeout handle }
+// ── AOI 드웰(dwell) 상태 — 타임스태프 방식 (setTimeout 제거, 노이즈에 강건) ──
+let _aoiEnterTime = {};         // { aoiId: 시선 진입 시각 ms }
 let _aoiBorderOn  = new Set();  // 현재 녹색 테두리가 켜진 AOI id 집합
 
 // ── 시선 기록 (리플레이용) ──
-// 항목: { t: ms, x, y, s: trackingState, aois: [...activeAoiIds], qIdx }
 let _gazeLog = [];
 
 // ── 리플레이 상태 ──
@@ -611,18 +608,17 @@ function onGaze(gazeInfo) {
 
     // ── AOI 판정 + 시선 기록 (독해 화면 활성 시) ──
     if (_readingActive && _sessionStartTime) {
+        // 트래킹 실패 시 clearAllAOI 호출 안 함: 단기적 노이즈에 드웰 타이머 리셋 방지
         if (gazeState.trackingState === 0 && gazeState.x != null && gazeState.y != null) {
             checkAOI(gazeState.x, gazeState.y);
-        } else {
-            clearAllAOI();
         }
-        // 시선 로그 기록 (리플레이용)
+        // 시선 로그 기록
         _gazeLog.push({
             t:    Date.now() - _sessionStartTime,
             x:    gazeState.x,
             y:    gazeState.y,
             s:    gazeState.trackingState,
-            aois: [..._aoiBorderOn],   // 현재 녹색 테두리가 켜진 AOI 목록
+            aois: [..._aoiBorderOn],
             qIdx: _currentQIdx,
         });
     }
@@ -744,6 +740,9 @@ function showReadingLayout() {
     _timerVisible     = false;
     _currentQIdx      = 0;
 
+    // HUD 숨기기 (독해 모드 중)
+    document.body.classList.add('reading-mode');
+
     // 첫 번째 문제 표시
     showQuestion(0);
 
@@ -810,12 +809,9 @@ function showQuestion(qIdx) {
  * '다음문제' 버튼이 마지막 문제에서 눌리면 세션 종료.
  */
 function navigateQuestion(delta) {
-    // 현재 문제 AOI 드웰 타이머 정리 (내비 = 문제 AOI 종료)
+    // 현재 문제 AOI 진입 시각 및 테두리 지우기 (내비 = AOI 종료)
     const curAoiId = `q-${_currentQIdx + 1}`;
-    if (_aoiDwellTmr[curAoiId]) {
-        clearTimeout(_aoiDwellTmr[curAoiId]);
-        delete _aoiDwellTmr[curAoiId];
-    }
+    delete _aoiEnterTime[curAoiId];
     _aoiBorderOn.delete(curAoiId);
     const curEl = document.querySelector(`[data-aoi="${curAoiId}"]`);
     if (curEl) curEl.classList.remove('aoi-active');
@@ -856,14 +852,15 @@ function buildAOIList() {
 
 /**
  * 시선 좌표로 각 AOI 히트 여부를 판정.
- * - 새로 진입: 1초 드웰 타이머 시작 → 타이머 만료 시 녹색 테두리 ON
- * - 지문 문단 이탈: 즉시 테두리 OFF
- * - 문제 AOI 이탈: 테두리 유지 (내비 버튼 클릭 시 OFF)
+ * 타임스태프 방식: 진입 시각을 기록하고 1초 누적되면 즈시 ON.
+ * onGaze 30fps에서 호출되므로 눈 노이즈에 강건.
  */
 function checkAOI(gazeX, gazeY) {
     if (!_aoiVisible) return;
 
+    const now        = Date.now();
     const currentHit = new Set();
+
     _aoiElements.forEach(el => {
         const r = el.getBoundingClientRect();
         if (gazeX >= r.left && gazeX <= r.right && gazeY >= r.top && gazeY <= r.bottom) {
@@ -871,27 +868,24 @@ function checkAOI(gazeX, gazeY) {
         }
     });
 
-    // 새로 진입한 AOI → 드웰 타이머 시작
+    // ■ 응시 중인 AOI: 진입 시각 기록 + 1초 달성 시 테두리 ON
     currentHit.forEach(id => {
-        if (!_aoiPrevHit.has(id) && !_aoiDwellTmr[id]) {
-            _aoiDwellTmr[id] = setTimeout(() => {
-                delete _aoiDwellTmr[id];
-                if (!_aoiBorderOn.has(id) && _aoiVisible) {
-                    const el = document.querySelector(`[data-aoi="${id}"]`);
-                    if (el) el.classList.add('aoi-active');
-                    _aoiBorderOn.add(id);
-                    logI('aoi', `${id} 활성 (1초 응시)`);
-                }
-            }, 1000);
+        if (!_aoiEnterTime[id]) {
+            _aoiEnterTime[id] = now;          // 새로 진입
+        }
+        if (now - _aoiEnterTime[id] >= 1000 && !_aoiBorderOn.has(id)) {
+            const el = document.querySelector(`[data-aoi="${id}"]`);
+            if (el) el.classList.add('aoi-active');
+            _aoiBorderOn.add(id);
+            logI('aoi', `${id} 활성 (${ (now - _aoiEnterTime[id]) }마 응시)`);
         }
     });
 
-    // 이탈한 AOI 처리
-    _aoiPrevHit.forEach(id => {
+    // ■ 이탈한 AOI
+    for (const id in _aoiEnterTime) {
         if (!currentHit.has(id)) {
-            // 드웰 타이머 취소
-            if (_aoiDwellTmr[id]) { clearTimeout(_aoiDwellTmr[id]); delete _aoiDwellTmr[id]; }
-            // 지문 문단: 이탈 즉시 테두리 OFF
+            delete _aoiEnterTime[id];
+            // 지문 문단: 이탈 즉시 OFF
             if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
                 const el = document.querySelector(`[data-aoi="${id}"]`);
                 if (el) el.classList.remove('aoi-active');
@@ -899,18 +893,14 @@ function checkAOI(gazeX, gazeY) {
             }
             // 문제 AOI: 내비 버튼 클릭까지 테두리 유지
         }
-    });
-
-    _aoiPrevHit = currentHit;
+    }
 }
 
-/** 모든 AOI 드웰 타이머 및 테두리 해제 */
+/** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
     _aoiElements.forEach(el => el.classList.remove('aoi-active'));
-    Object.values(_aoiDwellTmr).forEach(t => clearTimeout(t));
-    _aoiDwellTmr = {};
+    _aoiEnterTime = {};
     _aoiBorderOn.clear();
-    _aoiPrevHit.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

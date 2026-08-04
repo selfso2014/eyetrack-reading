@@ -1,4 +1,4 @@
-﻿/* ===== css/style.css ===== */
+/* ===== css/style.css ===== */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -237,14 +237,24 @@ body {
   inset: 0;
   z-index: 5;
   display: flex;
-  flex-direction: column;        /* ??column: toolbar on top, panels below */
-  padding-top: 100px;            /* HUD ?섎떒 ?щ갚 */
+  flex-direction: column;        /* toolbar on top, panels below */
+  padding-top: 56px;             /* HUD 없을 때 툴바 공간만 */
   overflow: hidden;
   background: linear-gradient(160deg, #07091a 0%, #0d1225 60%, #101830 100%);
 }
 #readingLayout.hidden { display: none; }
 
-/* ?? Toolbar ?? */
+/* 독해 모드 중 HUD 사용 안 함 */
+.reading-mode #hud,
+.reading-mode #gazeInfo,
+.reading-mode #memMonitor,
+.reading-mode #debugToggle,
+.reading-mode #debugPanel,
+.reading-mode #debugToolbar {
+  display: none !important;
+}
+
+/* ?€?€ Toolbar ?€?€ */
 #readingToolbar {
   flex-shrink: 0;
   display: flex;
@@ -273,16 +283,20 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+  margin-left: auto;   /* 항상 오른쪽 고정 — 타이머 표시 여부와 무관하게 */
 }
 
 .toggle-btn {
   font-size: 12px;
   font-weight: 600;
-  padding: 6px 14px;
+  padding: 6px 0;
+  min-width: 80px;               /* 텍스트 변경 시도 너비 고정 */
+  text-align: center;
   border-radius: 20px;
   border: 1.5px solid rgba(108, 123, 255, 0.35);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease,
+              color 0.18s ease, transform 0.18s ease;
   background: rgba(108, 123, 255, 0.08);
   color: var(--text-primary);
   letter-spacing: 0.02em;
@@ -323,6 +337,7 @@ body {
   border-color: rgba(251, 191, 36, 0.7);
   animation: pulse-replay 1.2s ease-in-out infinite;
 }
+.toggle-btn.replay-btn { min-width: 96px; }  /* ▶ 리플레이 ↔ ■ 중단 텍스트 교체돼도 너비 고정 */
 @keyframes pulse-replay {
   0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4); }
   50%       { box-shadow: 0 0 0 7px rgba(251, 191, 36, 0); }
