@@ -506,14 +506,17 @@ body {
   font-size: 14.5px;
   line-height: 2;
   color: var(--text-primary);
-  margin-bottom: 32px;           /* ???볦? 臾몃떒 媛꾧꺽 */
+  margin-bottom: 32px;           /* 상하 문단 간격 */
   padding: 18px 22px;
   border-radius: 12px;
-  border: 2px solid transparent;
+  /* ── border shorthand 가 아닌 longhand 분리: aoi-active border-color override 쓸 수 있도록 ── */
+  border-width: 2px;
+  border-style: solid;
+  border-color: transparent;
   background: rgba(255, 255, 255, 0.018);
-  transition: border-color 0.18s ease,
-              box-shadow   0.18s ease,
-              background   0.18s ease;
+  transition: border-color 0.25s ease,
+              box-shadow   0.25s ease,
+              background   0.25s ease;
   word-break: keep-all;
 }
 
@@ -530,11 +533,14 @@ body {
   margin-bottom: 0;
   padding: 18px 20px 14px;
   border-radius: 14px;
-  border: 2px solid transparent;
+  /* ── border shorthand 가 아닌 longhand 분리 ── */
+  border-width: 2px;
+  border-style: solid;
+  border-color: transparent;
   background: rgba(255, 255, 255, 0.018);
-  transition: border-color 0.18s ease,
-              box-shadow   0.18s ease,
-              background   0.18s ease;
+  transition: border-color 0.25s ease,
+              box-shadow   0.25s ease,
+              background   0.25s ease;
 }
 
 .question-header {

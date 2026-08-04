@@ -483,10 +483,14 @@ let _currentQIdx = 0;
 let _sessionStartTime = null;
 let _timerInterval    = null;
 
-// ── AOI 드웰(dwell) 상태 — 타임스태프 + 유예기간 방식 ──
-let _aoiEnterTime   = {};         // { aoiId: 시선 욵시작 시각 ms }
-let _aoiLastHitTime = {};         // { aoiId: 마지막 히트 시각 ms } → 300ms 유예에 사용
-let _aoiBorderOn    = new Set();  // 현재 녹색 테두리가 켜진 AOI id 집합
+// ── AOI 드웰(dwell) 상태 ──
+let _aoiEnterTime     = {};         // { aoiId: 시선 진입 시각 ms }
+let _aoiLastHitTime   = {};         // { aoiId: 마지막 히트 시각 ms }
+let _aoiBorderOn      = new Set();  // 녹색 테두리 켜진 AOI id 집합
+let _lastCheckAOITime = 0;          // checkAOI 마지막 호출 시각 (추적 소실 구간 감지)
+
+// ── AOI 디버그 표시 상태 ──
+let _aoiDebugVisible  = true;       // 독해 모드 진입 시 자동 표시
 
 // ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
@@ -693,44 +697,95 @@ function onCalFinish(calibrationData) {
 
     // [FIX] 캘리브레이션 후 800ms GPU 플러시 대기 (iPhone OOM 방지)
     els.calOverlay?.classList.remove('active');
-    setPill(els.pillCal, 'Cal: done', 'ok');
-    setStatus('Calibration complete! Eye tracking is active.');
+  /**
+ * 시선 좌표로 AOI 히트 판정 + 디버그 HUD 업데이트.
+ *
+ * [Bug #2 수정] 추적 소실(눈 깨짜임/눈 움직임 등) 중 checkAOI 가 호출안됨.
+ *   이때 _aoiLastHitTime 이 갱신안 되므로 grace직전에 타이머 RESET됨.
+ *   해결: 마지막 checkAOI 호출~현재간 간격(gap) 만큼 _aoiLastHitTime 를 앞당김
+ *         → 추적 소실 구간 동안 grace 카운트다운 일시정지(freeze) 효과
+ *
+ * [Bug #3 수정] 히트 rect 를 좌우 +30px, 상하 +10px 확장
+ *         → questionViewport padding 영역에 시선이 나와도 hit 판정
+ */
+const _AOI_DWELL_MS     = 800;   // 테두리 ON 추적 시간 ms (0.8초)
+const _AOI_GRACE_MS     = 800;   // 일시 이탈 허용 ms (0.8초)
+const _AOI_HIT_PAD_X    =  30;   // rect 좌우 확장 px (패드 영역 포함)
+const _AOI_HIT_PAD_Y    =  10;   // rect 상하 확장 px
+const _AOI_GAP_FREEZE   =  50;   // 이 ms 이상 호출 간격 = 추적 소실 간주
 
-    _calProgress = 0;
-    _calPointIndex = 0;
+function checkAOI(gazeX, gazeY) {
+    if (!_aoiVisible) return;
 
-    // 콜백 정리
-    _seeso.removeCalibrationNextPointCallback(onCalNextPoint);
-    _seeso.removeCalibrationProgressCallback(onCalProgress);
-    _seeso.removeCalibrationFinishCallback(onCalFinish);
+    const now = Date.now();
 
-    // 캘리브레이션 데이터 저장 (재사용 가능)
-    if (calibrationData) {
-        try {
-            const dataStr = JSON.stringify({
-                vector: calibrationData.vector,
-                vectorLength: calibrationData.vectorLength,
-            });
-            localStorage.setItem('eyetrack_cal_data', dataStr);
-            logI('cal', 'Calibration data saved to localStorage');
-        } catch (_) { }
+    // ── [Bug #2] 추적 소실 중 grace 카운트다운 FREEZE ──
+    if (_lastCheckAOITime > 0) {
+        const gap = now - _lastCheckAOITime;
+        if (gap > _AOI_GAP_FREEZE) {
+            // gap 만큼 _aoiLastHitTime 을 앞당김 → grace 카운트다운 일시정지
+            for (const id in _aoiLastHitTime) {
+                _aoiLastHitTime[id] += gap;
+            }
+            logI('aoi', `추적소실 ${gap}ms → grace 타이머 freeze`);
+        }
+    }
+    _lastCheckAOITime = now;
+
+    const currentHit = new Set();
+
+    // ── [Bug #3] rect 확장 효과로 히트 판정 ──
+    _aoiElements.forEach(el => {
+        const r = el.getBoundingClientRect();
+        if (gazeX >= r.left  - _AOI_HIT_PAD_X &&
+            gazeX <= r.right + _AOI_HIT_PAD_X &&
+            gazeY >= r.top   - _AOI_HIT_PAD_Y &&
+            gazeY <= r.bottom + _AOI_HIT_PAD_Y) {
+            currentHit.add(el.dataset.aoi);
+        }
+    });
+
+    // ■ 응시 중: 진입 시각 기록 + DWELL 달성 시 테두리 ON
+    currentHit.forEach(id => {
+        _aoiLastHitTime[id] = now;
+        if (!_aoiEnterTime[id]) {
+            _aoiEnterTime[id] = now;
+            logI('aoi', `${id} 진입`);
+        }
+        const dwell = now - _aoiEnterTime[id];
+        if (dwell >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
+            const el = document.querySelector(`[data-aoi="${id}"]`);
+            if (el) el.classList.add('aoi-active');
+            _aoiBorderOn.add(id);
+            logI('aoi', `${id} 테두리 ON (${dwell}ms)`);
+        }
+    });
+
+    // ■ 이탈 체크: grace 시간 초과 후에만 타이머 삭제
+    for (const id in _aoiEnterTime) {
+        if (!currentHit.has(id)) {
+            const lastHit = _aoiLastHitTime[id] || 0;
+            if (now - lastHit > _AOI_GRACE_MS) {
+                delete _aoiEnterTime[id];
+                delete _aoiLastHitTime[id];
+                if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
+                    const el = document.querySelector(`[data-aoi="${id}"]`);
+                    if (el) el.classList.remove('aoi-active');
+                    _aoiBorderOn.delete(id);
+                    logI('aoi', `${id} 테두리 OFF`);
+                }
+            }
+        }
     }
 
-    // ── 독해 화면 전환 (GPU 플러시 대기 후 800ms) ──
-    setTimeout(() => showReadingLayout(), 800);
+    // ── 디버그 HUD 업데이트 ──
+    _updateAOIDebugHud(gazeX, gazeY, currentHit, now);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ───────────────────────────────────────────────────────────────────────────────
 // §12b. Reading Layout & AOI Detection
-// ═══════════════════════════════════════════════════════════════════════════════
+// ───────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-// §14-A. 독해 레이아웃 초기화
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 독해 레이아웃을 표시하고 모든 버튼 핸들러를 연결한다.
- */
 function showReadingLayout() {
     const layout = document.getElementById('readingLayout');
     if (!layout) { logE('reading', 'readingLayout element not found'); return; }
@@ -754,10 +809,12 @@ function showReadingLayout() {
     const btnAOI   = document.getElementById('btnToggleAOI');
     const btnTimer = document.getElementById('btnToggleTimer');
     const btnReplay = document.getElementById('btnReplay');
+    const btnDbg    = document.getElementById('btnToggleDebug');
     if (btnGaze)   btnGaze.onclick   = toggleGazeVisibility;
     if (btnAOI)    btnAOI.onclick    = toggleAOIVisibility;
     if (btnTimer)  btnTimer.onclick  = toggleTimer;
     if (btnReplay) btnReplay.onclick = startReplay;
+    if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
 
     // 문제 내비게이션 버튼 연결
     const btnPrev = document.getElementById('btnPrevQ');
@@ -774,6 +831,22 @@ function showReadingLayout() {
             e.stopPropagation();
         };
     });
+
+    // ── AOI 디버그 HUD DOM 생성 (없으면 생성) ──
+    if (!document.getElementById('aoiDebugHud')) {
+        const hud = document.createElement('div');
+        hud.id = 'aoiDebugHud';
+        hud.style.cssText = [
+            'position:fixed', 'bottom:70px', 'right:12px', 'z-index:9990',
+            'background:rgba(5,8,30,0.92)', 'color:#7df', 'font:11px/1.6 monospace',
+            'padding:10px 14px', 'border-radius:10px', 'pointer-events:none',
+            'min-width:240px', 'border:1px solid rgba(108,123,255,0.4)',
+            'box-shadow:0 4px 20px rgba(0,0,0,0.5)', 'white-space:pre'
+        ].join(';');
+        document.body.appendChild(hud);
+    }
+    _aoiDebugVisible = true;  // 독해 모드 진입 시 자동 ON
+    if (btnDbg) { btnDbg.classList.add('is-on'); btnDbg.classList.remove('is-off'); }
 
     setStatus('Eye tracking active — 독해 모드');
     logI('reading', `독해 레이아웃 활성화`);
@@ -916,9 +989,63 @@ function checkAOI(gazeX, gazeY) {
 /** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
     _aoiElements.forEach(el => el.classList.remove('aoi-active'));
-    _aoiEnterTime   = {};
-    _aoiLastHitTime = {};
+    _aoiEnterTime     = {};
+    _aoiLastHitTime   = {};
     _aoiBorderOn.clear();
+    _lastCheckAOITime = 0;   // freeze 추적 중단 시간 초기화
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// §14-D-1. AOI 실시간 디버그 HUD
+// ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 실시간 AOI 상태를 화면 우하단에 표시하는 디버그 HUD.
+ * - 시선 좌표 / trackingState / 각 AOI 드웰 진행바 / 테두리 켜진 목록
+ * - 독해 모드 진입 시 자동 표시, [DBG] 버튼으로 토글
+ */
+function _updateAOIDebugHud(gazeX, gazeY, currentHit, now) {
+    const hud = document.getElementById('aoiDebugHud');
+    if (!hud) return;
+    if (!_aoiDebugVisible) { hud.style.display = 'none'; return; }
+    hud.style.display = 'block';
+
+    const stNames = ['\u2705OK', '\u26a0\ufe0fLOW', '\u274cUNSUP', '\u274cNOFACE'];
+    const st      = stNames[gazeState.trackingState] ?? `?(${gazeState.trackingState})`;
+
+    const lines = [
+        `\ud83c\udfaf AOI \ub514\ubc84\uadf8 [DBG \ubc84\ud2bc\uc73c\ub85c \uc228\uae40]`,
+        `\uc2dc\uc120: (${gazeX?.toFixed(0) ?? '-'}, ${gazeY?.toFixed(0) ?? '-'})  ${st}`,
+        `\uc601\uc5ed ON: ${_aoiVisible}  |  \uc694\uc18c: ${_aoiElements.length}\uac1c`,
+        `\ud788\ud2b8: [${[...currentHit].join(', ') || '-'}]`,
+        `\ud14c\ub450\ub9ac: [${[..._aoiBorderOn].join(', ') || '-'}]`,
+        `\u2500\u2500 \ub4dc\uc6f0 \uc9c4\ud589 (${_AOI_DWELL_MS}ms \ubaa9\ud45c) \u2500\u2500`
+    ];
+
+    _aoiElements.forEach(el => {
+        const id     = el.dataset.aoi;
+        const enterT = _aoiEnterTime[id];
+        const dwell  = enterT ? Math.min(_AOI_DWELL_MS, now - enterT) : 0;
+        const pct    = Math.round(dwell / _AOI_DWELL_MS * 10);
+        const bar    = '\u2588'.repeat(pct) + '\u2591'.repeat(10 - pct);
+        const inHit  = currentHit.has(id)  ? '\ud83d\udc41' : '  ';
+        const onBrd  = _aoiBorderOn.has(id) ? '\ud83d\udfe9' : '  ';
+        lines.push(`${onBrd}${inHit} ${id.padEnd(8)} ${bar} ${Math.round(dwell)}ms`);
+    });
+
+    hud.textContent = lines.join('\n');
+}
+
+/** AOI 디버그 HUD 토글 */
+function toggleAOIDebug() {
+    _aoiDebugVisible = !_aoiDebugVisible;
+    const btn = document.getElementById('btnToggleDebug');
+    if (btn) {
+        btn.classList.toggle('is-on',  _aoiDebugVisible);
+        btn.classList.toggle('is-off', !_aoiDebugVisible);
+    }
+    const hud = document.getElementById('aoiDebugHud');
+    if (hud) hud.style.display = _aoiDebugVisible ? 'block' : 'none';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
