@@ -859,8 +859,8 @@ function buildAOIList() {
  * - 진입 시각을 기록하여 1000ms 추적 후 테두리 ON
  * - 300ms 유예기간: gaze가 일시적 이탈해도 진입 시각을 유지
  */
-const _AOI_DWELL_MS = 0;      // 즉시 테두리 ON (진단용: 나중에 1000으로 복구)
-const _AOI_GRACE_MS = 300;    // 일시적 이탈 허용 시간 ms
+const _AOI_DWELL_MS = 1000;   // 1초 응시 후 테두리 ON
+const _AOI_GRACE_MS =  300;   // 일시적 이탈 허용 시간 ms
 
 function checkAOI(gazeX, gazeY) {
     if (!_aoiVisible) return;
@@ -868,42 +868,12 @@ function checkAOI(gazeX, gazeY) {
     const now        = Date.now();
     const currentHit = new Set();
 
-    // ── 디버그 HUD 업데이트 ──
-    let dbg = document.getElementById('aoiDebugHud');
-    if (!dbg) {
-        dbg = document.createElement('div');
-        dbg.id = 'aoiDebugHud';
-        dbg.style.cssText = [
-            'position:fixed', 'bottom:8px', 'right:8px', 'z-index:9999',
-            'background:rgba(0,0,0,0.85)', 'color:#0f0', 'font:11px monospace',
-            'padding:6px 10px', 'border-radius:6px', 'pointer-events:none',
-            'white-space:pre', 'line-height:1.5'
-        ].join(';');
-        document.body.appendChild(dbg);
-    }
-
-    // \uc5d8\ub9ac\uba4c\ud2b8\ubcc4 rect \uc218\uc9d1 + \ud788\ud2b8 \ud310\uc815
-    const rectLines = [];
     _aoiElements.forEach(el => {
         const r = el.getBoundingClientRect();
-        const hit = gazeX >= r.left && gazeX <= r.right && gazeY >= r.top && gazeY <= r.bottom;
-        if (hit) currentHit.add(el.dataset.aoi);
-        rectLines.push(`${el.dataset.aoi}: [${r.left.toFixed(0)},${r.top.toFixed(0)},${r.right.toFixed(0)},${r.bottom.toFixed(0)}] ${hit ? '\u2713HIT' : ''}`);
+        if (gazeX >= r.left && gazeX <= r.right && gazeY >= r.top && gazeY <= r.bottom) {
+            currentHit.add(el.dataset.aoi);
+        }
     });
-
-    // HUD \ud45c\uc2dc \uc5c5\ub370\uc774\ud2b8
-    if (dbg) {
-        dbg.textContent = [
-            `\ud654\uc0c1: AOI \ub514\ubc84\uadf8`,
-            `gaze: (${gazeX?.toFixed(0)}, ${gazeY?.toFixed(0)})`,
-            `elements: ${_aoiElements.length}`,
-            `visible: ${_aoiVisible}`,
-            `hit: [${[...currentHit].join(', ')}]`,
-            `borders: [${[..._aoiBorderOn].join(', ')}]`,
-            `--- rects ---`,
-            ...rectLines.slice(0, 6)
-        ].join('\n');
-    }
 
     // ■ 응시 중: 진입 시각 기록 + 1초 달성 시 테두리 ON
     currentHit.forEach(id => {
