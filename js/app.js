@@ -468,7 +468,34 @@ let _seeso = null;
 let _rawSeeso = null;
 let _trackingActive = false;
 let _readingActive = false;  // 독해 레이아웃 활성 여부
-let _aoiElements = [];       // AOI DOM 요소 목록
+let _aoiElements = [];       // 현재 활성 AOI DOM 요소 목록
+
+// ── 가시성 토글 상태 ──
+let _gazeVisible  = true;
+let _aoiVisible   = true;
+let _timerVisible = false;
+
+// ── 문제 내비게이션 ──
+const _TOTAL_QUESTIONS = 3;
+let _currentQIdx = 0;
+
+// ── 세션 타이머 ──
+let _sessionStartTime = null;
+let _timerInterval    = null;
+
+// ── AOI 드웰(dwell) 상태 ──
+// 시선이 AOI에 1초 이상 머물러야 녹색 테두리 활성화
+let _aoiPrevHit   = new Set();  // 이전 프레임에서 시선이 있던 AOI id 집합
+let _aoiDwellTmr  = {};         // { aoiId → setTimeout handle }
+let _aoiBorderOn  = new Set();  // 현재 녹색 테두리가 켜진 AOI id 집합
+
+// ── 시선 기록 (리플레이용) ──
+// 항목: { t: ms, x, y, s: trackingState, aois: [...activeAoiIds], qIdx }
+let _gazeLog = [];
+
+// ── 리플레이 상태 ──
+let _replayActive = false;
+let _replayRAF    = null;
 
 async function initSDK() {
     setPill(els.pillSdk, 'SDK: loading', 'warn');
@@ -582,13 +609,22 @@ function onGaze(gazeInfo) {
 
     renderGaze();
 
-    // ── AOI 판정 (독해 화면 활성 시) ──
-    if (_readingActive) {
+    // ── AOI 판정 + 시선 기록 (독해 화면 활성 시) ──
+    if (_readingActive && _sessionStartTime) {
         if (gazeState.trackingState === 0 && gazeState.x != null && gazeState.y != null) {
             checkAOI(gazeState.x, gazeState.y);
         } else {
             clearAllAOI();
         }
+        // 시선 로그 기록 (리플레이용)
+        _gazeLog.push({
+            t:    Date.now() - _sessionStartTime,
+            x:    gazeState.x,
+            y:    gazeState.y,
+            s:    gazeState.trackingState,
+            aois: [..._aoiBorderOn],   // 현재 녹색 테두리가 켜진 AOI 목록
+            qIdx: _currentQIdx,
+        });
     }
 }
 
@@ -689,52 +725,340 @@ function onCalFinish(calibrationData) {
 // §12b. Reading Layout & AOI Detection
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-A. 독해 레이아웃 초기화
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * 독해 레이아웃을 표시하고 AOI 목록을 구성한다.
- * onCalFinish() 완료 800ms 후, 그리고 재시작 후 캘리브레이션 복원 시 호출된다.
+ * 독해 레이아웃을 표시하고 모든 버튼 핸들러를 연결한다.
  */
 function showReadingLayout() {
     const layout = document.getElementById('readingLayout');
     if (!layout) { logE('reading', 'readingLayout element not found'); return; }
     layout.classList.remove('hidden');
-    _readingActive = true;
-    buildAOIList();
+    _readingActive    = true;
+    _sessionStartTime = Date.now();
+    _gazeLog          = [];
+    _gazeVisible      = true;
+    _aoiVisible       = true;
+    _timerVisible     = false;
+    _currentQIdx      = 0;
+
+    // 첫 번째 문제 표시
+    showQuestion(0);
+
+    // 툴바 버튼 연결
+    const btnGaze  = document.getElementById('btnToggleGaze');
+    const btnAOI   = document.getElementById('btnToggleAOI');
+    const btnTimer = document.getElementById('btnToggleTimer');
+    const btnReplay = document.getElementById('btnReplay');
+    if (btnGaze)   btnGaze.onclick   = toggleGazeVisibility;
+    if (btnAOI)    btnAOI.onclick    = toggleAOIVisibility;
+    if (btnTimer)  btnTimer.onclick  = toggleTimer;
+    if (btnReplay) btnReplay.onclick = startReplay;
+
+    // 문제 내비게이션 버튼 연결
+    const btnPrev = document.getElementById('btnPrevQ');
+    const btnNext = document.getElementById('btnNextQ');
+    if (btnPrev) btnPrev.onclick = () => navigateQuestion(-1);
+    if (btnNext) btnNext.onclick = () => navigateQuestion(1);
+
+    // 선지 클릭 선택
+    document.querySelectorAll('.choice-list li').forEach(li => {
+        li.onclick = (e) => {
+            const list = li.closest('.choice-list');
+            list.querySelectorAll('li').forEach(item => item.classList.remove('selected'));
+            li.classList.add('selected');
+            e.stopPropagation();
+        };
+    });
+
     setStatus('Eye tracking active — 독해 모드');
-    logI('reading', `독해 레이아웃 활성화. AOI ${_aoiElements.length}개`);
+    logI('reading', `독해 레이아웃 활성화`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-B. 문제 내비게이션
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** qIdx번 문제를 표시하고 UI 상태를 갱신한다. */
+function showQuestion(qIdx) {
+    const blocks = Array.from(document.querySelectorAll('.question-block'));
+    blocks.forEach((el, i) => el.classList.toggle('q-current', i === qIdx));
+    _currentQIdx = qIdx;
+
+    const counter = document.getElementById('questionCounter');
+    if (counter) counter.textContent = `${qIdx + 1} / ${_TOTAL_QUESTIONS}`;
+
+    const btnPrev = document.getElementById('btnPrevQ');
+    const btnNext = document.getElementById('btnNextQ');
+    if (btnPrev) btnPrev.disabled = (qIdx === 0);
+    if (btnNext) {
+        const isLast = qIdx === _TOTAL_QUESTIONS - 1;
+        btnNext.textContent = isLast ? '종료' : '다음문제 →';
+        btnNext.classList.toggle('nav-next', !isLast);
+        btnNext.classList.toggle('nav-end',  isLast);
+    }
+
+    // 현재 문제 AOI만 포함하도록 목록 갱신
+    buildAOIList();
 }
 
 /**
- * DOM에서 .passage-para, .question-block 요소를 수집하여 _aoiElements 갱신.
- * 재시작 후에도 재호출하여 DOM 상태를 반영한다.
+ * 이전/다음 문제로 이동한다.
+ * delta: -1(이전) / +1(다음)
+ * '다음문제' 버튼이 마지막 문제에서 눌리면 세션 종료.
+ */
+function navigateQuestion(delta) {
+    // 현재 문제 AOI 드웰 타이머 정리 (내비 = 문제 AOI 종료)
+    const curAoiId = `q-${_currentQIdx + 1}`;
+    if (_aoiDwellTmr[curAoiId]) {
+        clearTimeout(_aoiDwellTmr[curAoiId]);
+        delete _aoiDwellTmr[curAoiId];
+    }
+    _aoiBorderOn.delete(curAoiId);
+    const curEl = document.querySelector(`[data-aoi="${curAoiId}"]`);
+    if (curEl) curEl.classList.remove('aoi-active');
+
+    const newIdx = _currentQIdx + delta;
+    if (newIdx >= _TOTAL_QUESTIONS) {
+        endSession();
+        return;
+    }
+    if (newIdx < 0) return;
+    showQuestion(newIdx);
+}
+
+/** 세션 종료: 트래킹 AOI 중단, 리플레이 버튼 활성화 */
+function endSession() {
+    _readingActive = false;
+    clearAllAOI();
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    const btnReplay = document.getElementById('btnReplay');
+    if (btnReplay) btnReplay.disabled = false;
+    setStatus('독해 완료! ▶ 리플레이 버튼으로 시선을 확인하세요.');
+    logI('reading', `세션 종료. 총 ${_gazeLog.length}프레임 기록.`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-C. AOI 목록 구성 + 드웰 판정
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 지문 문단 전체 + 현재 표시 중인 문제 블록만 _aoiElements에 수집.
  */
 function buildAOIList() {
-    _aoiElements = [
-        ...document.querySelectorAll('.passage-para'),
-        ...document.querySelectorAll('.question-block'),
-    ];
+    const paras = Array.from(document.querySelectorAll('.passage-para'));
+    const curQ  = document.querySelector(`.question-block[data-qnum="${_currentQIdx}"]`);
+    _aoiElements = curQ ? [...paras, curQ] : paras;
     logI('reading', `AOI 목록: ${_aoiElements.map(el => el.dataset.aoi).join(', ')}`);
 }
 
 /**
- * 시선 좌표(viewport px)가 각 AOI 요소 내부인지 판정하고
- * .aoi-active 클래스를 토글한다.
- * getBoundingClientRect()는 스크롤을 자동 반영한 viewport 기준 좌표를 반환한다.
- *
- * @param {number} gazeX  - viewport 기준 X (px)
- * @param {number} gazeY  - viewport 기준 Y (px)
+ * 시선 좌표로 각 AOI 히트 여부를 판정.
+ * - 새로 진입: 1초 드웰 타이머 시작 → 타이머 만료 시 녹색 테두리 ON
+ * - 지문 문단 이탈: 즉시 테두리 OFF
+ * - 문제 AOI 이탈: 테두리 유지 (내비 버튼 클릭 시 OFF)
  */
 function checkAOI(gazeX, gazeY) {
+    if (!_aoiVisible) return;
+
+    const currentHit = new Set();
     _aoiElements.forEach(el => {
         const r = el.getBoundingClientRect();
-        const hit = gazeX >= r.left && gazeX <= r.right
-                 && gazeY >= r.top  && gazeY <= r.bottom;
-        el.classList.toggle('aoi-active', hit);
+        if (gazeX >= r.left && gazeX <= r.right && gazeY >= r.top && gazeY <= r.bottom) {
+            currentHit.add(el.dataset.aoi);
+        }
     });
+
+    // 새로 진입한 AOI → 드웰 타이머 시작
+    currentHit.forEach(id => {
+        if (!_aoiPrevHit.has(id) && !_aoiDwellTmr[id]) {
+            _aoiDwellTmr[id] = setTimeout(() => {
+                delete _aoiDwellTmr[id];
+                if (!_aoiBorderOn.has(id) && _aoiVisible) {
+                    const el = document.querySelector(`[data-aoi="${id}"]`);
+                    if (el) el.classList.add('aoi-active');
+                    _aoiBorderOn.add(id);
+                    logI('aoi', `${id} 활성 (1초 응시)`);
+                }
+            }, 1000);
+        }
+    });
+
+    // 이탈한 AOI 처리
+    _aoiPrevHit.forEach(id => {
+        if (!currentHit.has(id)) {
+            // 드웰 타이머 취소
+            if (_aoiDwellTmr[id]) { clearTimeout(_aoiDwellTmr[id]); delete _aoiDwellTmr[id]; }
+            // 지문 문단: 이탈 즉시 테두리 OFF
+            if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
+                const el = document.querySelector(`[data-aoi="${id}"]`);
+                if (el) el.classList.remove('aoi-active');
+                _aoiBorderOn.delete(id);
+            }
+            // 문제 AOI: 내비 버튼 클릭까지 테두리 유지
+        }
+    });
+
+    _aoiPrevHit = currentHit;
 }
 
-/** 모든 AOI 하이라이트 해제 (얼굴 없음 / 낮은 신뢰도 상태) */
+/** 모든 AOI 드웰 타이머 및 테두리 해제 */
 function clearAllAOI() {
     _aoiElements.forEach(el => el.classList.remove('aoi-active'));
+    Object.values(_aoiDwellTmr).forEach(t => clearTimeout(t));
+    _aoiDwellTmr = {};
+    _aoiBorderOn.clear();
+    _aoiPrevHit.clear();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-D. 툴바 토글 함수
+// ─────────────────────────────────────────────────────────────────────────────
+
+function toggleGazeVisibility() {
+    _gazeVisible = !_gazeVisible;
+    const canvas = document.getElementById('gazeCanvas');
+    const info   = document.getElementById('gazeInfo');
+    const btn    = document.getElementById('btnToggleGaze');
+    if (canvas) canvas.style.display = _gazeVisible ? '' : 'none';
+    if (info)   info.style.display   = _gazeVisible ? '' : 'none';
+    if (btn) {
+        btn.classList.toggle('is-on',  _gazeVisible);
+        btn.classList.toggle('is-off', !_gazeVisible);
+    }
+    if (!_gazeVisible) clearAllAOI();
+    logI('reading', `시선 표시: ${_gazeVisible ? 'ON' : 'OFF'}`);
+}
+
+function toggleAOIVisibility() {
+    _aoiVisible = !_aoiVisible;
+    const btn = document.getElementById('btnToggleAOI');
+    if (btn) {
+        btn.classList.toggle('is-on',  _aoiVisible);
+        btn.classList.toggle('is-off', !_aoiVisible);
+    }
+    if (!_aoiVisible) clearAllAOI();
+    logI('reading', `영역표시: ${_aoiVisible ? 'ON' : 'OFF'}`);
+}
+
+function toggleTimer() {
+    _timerVisible = !_timerVisible;
+    const timerEl = document.getElementById('readingTimer');
+    const btn     = document.getElementById('btnToggleTimer');
+    if (timerEl) timerEl.classList.toggle('hidden', !_timerVisible);
+    if (btn) {
+        btn.classList.toggle('is-on',  _timerVisible);
+        btn.classList.toggle('is-off', !_timerVisible);
+    }
+    if (_timerVisible && !_timerInterval) {
+        _timerInterval = setInterval(() => {
+            if (!_sessionStartTime) return;
+            const sec = Math.floor((Date.now() - _sessionStartTime) / 1000);
+            const m   = String(Math.floor(sec / 60)).padStart(2, '0');
+            const s   = String(sec % 60).padStart(2, '0');
+            const el  = document.getElementById('readingTimer');
+            if (el) el.textContent = `${m}:${s}`;
+        }, 1000);
+    } else if (!_timerVisible && _timerInterval) {
+        clearInterval(_timerInterval);
+        _timerInterval = null;
+    }
+    logI('reading', `타이머: ${_timerVisible ? 'ON' : 'OFF'}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-E. 시선 리플레이
+// ─────────────────────────────────────────────────────────────────────────────
+
+function startReplay() {
+    if (_gazeLog.length === 0) {
+        logW('replay', '기록된 시선 데이터 없음'); return;
+    }
+    if (_replayActive) { stopReplay(); return; }
+
+    _replayActive = true;
+    const btn = document.getElementById('btnReplay');
+    if (btn) { btn.textContent = '■ 중단'; btn.classList.add('replay-active'); }
+
+    // 모든 question-block 표시 (리플레이 중 qIdx 따라 전환)
+    const allBlocks = Array.from(document.querySelectorAll('.question-block'));
+
+    const dot = document.getElementById('replayDot');
+    if (dot) dot.style.display = 'block';
+
+    clearAllAOI();
+
+    // 전체 AOI 요소 캐시 (지문 + 전체 문제)
+    const allAOIEls = [
+        ...document.querySelectorAll('.passage-para'),
+        ...document.querySelectorAll('.question-block'),
+    ];
+
+    let replayIdx = 0;
+    const wallStart = Date.now();
+    const totalMs   = _gazeLog[_gazeLog.length - 1].t;
+
+    setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs / 1000)}초)...`);
+
+    function step() {
+        if (!_replayActive) return;
+        const elapsed = Date.now() - wallStart;
+
+        // elapsed 시각까지의 프레임 소비
+        while (replayIdx < _gazeLog.length && _gazeLog[replayIdx].t <= elapsed) {
+            replayIdx++;
+        }
+
+        if (replayIdx >= _gazeLog.length) { stopReplay(); return; }
+
+        const frame = _gazeLog[Math.max(0, replayIdx - 1)];
+
+        // 시선 닷 위치 갱신
+        if (dot) {
+            if (frame.s === 0 && frame.x != null) {
+                dot.style.display = 'block';
+                dot.style.left    = `${frame.x}px`;
+                dot.style.top     = `${frame.y}px`;
+            } else {
+                dot.style.display = 'none';
+            }
+        }
+
+        // 문제 화면 전환 (기록 당시 qIdx 반영)
+        allBlocks.forEach((el, i) => el.classList.toggle('q-current', i === frame.qIdx));
+        const counter = document.getElementById('questionCounter');
+        if (counter) counter.textContent = `${frame.qIdx + 1} / ${_TOTAL_QUESTIONS}`;
+
+        // AOI 테두리 복원
+        allAOIEls.forEach(el => {
+            const active = frame.aois && frame.aois.includes(el.dataset.aoi);
+            el.classList.toggle('aoi-active', active);
+        });
+
+        _replayRAF = requestAnimationFrame(step);
+    }
+
+    _replayRAF = requestAnimationFrame(step);
+    logI('replay', `리플레이 시작: ${_gazeLog.length}프레임, ${Math.ceil(totalMs/1000)}초`);
+}
+
+function stopReplay() {
+    _replayActive = false;
+    if (_replayRAF) { cancelAnimationFrame(_replayRAF); _replayRAF = null; }
+
+    const dot = document.getElementById('replayDot');
+    if (dot) dot.style.display = 'none';
+
+    const btn = document.getElementById('btnReplay');
+    if (btn) { btn.textContent = '▶ 리플레이'; btn.classList.remove('replay-active'); }
+
+    clearAllAOI();
+    // 현재 문제 복원
+    showQuestion(_currentQIdx);
+    setStatus('리플레이 완료.');
+    logI('replay', '리플레이 종료');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
