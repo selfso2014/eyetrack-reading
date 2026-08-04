@@ -483,9 +483,10 @@ let _currentQIdx = 0;
 let _sessionStartTime = null;
 let _timerInterval    = null;
 
-// ── AOI 드웰(dwell) 상태 — 타임스태프 방식 (setTimeout 제거, 노이즈에 강건) ──
-let _aoiEnterTime = {};         // { aoiId: 시선 진입 시각 ms }
-let _aoiBorderOn  = new Set();  // 현재 녹색 테두리가 켜진 AOI id 집합
+// ── AOI 드웰(dwell) 상태 — 타임스태프 + 유예기간 방식 ──
+let _aoiEnterTime   = {};         // { aoiId: 시선 욵시작 시각 ms }
+let _aoiLastHitTime = {};         // { aoiId: 마지막 히트 시각 ms } → 300ms 유예에 사용
+let _aoiBorderOn    = new Set();  // 현재 녹색 테두리가 켜진 AOI id 집합
 
 // ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
@@ -608,8 +609,10 @@ function onGaze(gazeInfo) {
 
     // ── AOI 판정 + 시선 기록 (독해 화면 활성 시) ──
     if (_readingActive && _sessionStartTime) {
-        // 트래킹 실패 시 clearAllAOI 호출 안 함: 단기적 노이즈에 드웰 타이머 리셋 방지
-        if (gazeState.trackingState === 0 && gazeState.x != null && gazeState.y != null) {
+        // trackingState 0(SUCCESS) + 1(LOW_CONFIDENCE) 모두 AOI 체크
+        // 실제 eye tracking에서 LOW_CONFIDENCE가 빈번하며, 0만 허용하면 AOI가 거의 탐지 안 됨
+        if ((gazeState.trackingState === 0 || gazeState.trackingState === 1)
+            && gazeState.x != null && gazeState.y != null) {
             checkAOI(gazeState.x, gazeState.y);
         }
         // 시선 로그 기록
@@ -851,10 +854,14 @@ function buildAOIList() {
 }
 
 /**
- * 시선 좌표로 각 AOI 히트 여부를 판정.
- * 타임스태프 방식: 진입 시각을 기록하고 1초 누적되면 즈시 ON.
- * onGaze 30fps에서 호출되므로 눈 노이즈에 강건.
+ * 시선 좌표로 AOI 히트 판정.
+ * - trackingState 0(성공) 및 1(낙은신뢰도) 모두 수락
+ * - 진입 시각을 기록하여 1000ms 추적 후 테두리 ON
+ * - 300ms 유예기간: gaze가 일시적 이탈해도 진입 시각을 유지
  */
+const _AOI_DWELL_MS = 1000;   // 테두리를 켜는 연속 응시 시간
+const _AOI_GRACE_MS =  300;   // 잘렃된 가주로 배제할 일시적 이탈 허용 시간
+
 function checkAOI(gazeX, gazeY) {
     if (!_aoiVisible) return;
 
@@ -868,30 +875,40 @@ function checkAOI(gazeX, gazeY) {
         }
     });
 
-    // ■ 응시 중인 AOI: 진입 시각 기록 + 1초 달성 시 테두리 ON
+    // ■ 응시 중: 진입 시각 기록 + 1초 달성 시 테두리 ON
     currentHit.forEach(id => {
+        _aoiLastHitTime[id] = now;         // 마지막 히트 시각 갱신 (유예 연산)
         if (!_aoiEnterTime[id]) {
-            _aoiEnterTime[id] = now;          // 새로 진입
+            _aoiEnterTime[id] = now;       // 새로 진입
+            logI('aoi', `${id} 진입`);
         }
-        if (now - _aoiEnterTime[id] >= 1000 && !_aoiBorderOn.has(id)) {
+        const dwell = now - _aoiEnterTime[id];
+        if (dwell >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
             const el = document.querySelector(`[data-aoi="${id}"]`);
             if (el) el.classList.add('aoi-active');
             _aoiBorderOn.add(id);
-            logI('aoi', `${id} 활성 (${ (now - _aoiEnterTime[id]) }마 응시)`);
+            logI('aoi', `${id} 테두리 ON (${dwell}ms)`);
         }
     });
 
-    // ■ 이탈한 AOI
+    // ■ 이탈 체크: 유예기간(300ms) 이후에만 진입시각 삭제
     for (const id in _aoiEnterTime) {
         if (!currentHit.has(id)) {
-            delete _aoiEnterTime[id];
-            // 지문 문단: 이탈 즉시 OFF
-            if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
-                const el = document.querySelector(`[data-aoi="${id}"]`);
-                if (el) el.classList.remove('aoi-active');
-                _aoiBorderOn.delete(id);
+            const lastHit = _aoiLastHitTime[id] || 0;
+            if (now - lastHit > _AOI_GRACE_MS) {
+                // 원신한 이탈 확정됨 → 진입 시각 삭제
+                delete _aoiEnterTime[id];
+                delete _aoiLastHitTime[id];
+                // 지문 문단: 이탈 즉시 OFF
+                if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
+                    const el = document.querySelector(`[data-aoi="${id}"]`);
+                    if (el) el.classList.remove('aoi-active');
+                    _aoiBorderOn.delete(id);
+                    logI('aoi', `${id} 테두리 OFF`);
+                }
+                // 문제 AOI: 내비 버튼 클릭까지 테두리 유지
             }
-            // 문제 AOI: 내비 버튼 클릭까지 테두리 유지
+            // else: 유예기간 내에 있으면 화선 진행 유지
         }
     }
 }
@@ -899,7 +916,8 @@ function checkAOI(gazeX, gazeY) {
 /** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
     _aoiElements.forEach(el => el.classList.remove('aoi-active'));
-    _aoiEnterTime = {};
+    _aoiEnterTime   = {};
+    _aoiLastHitTime = {};
     _aoiBorderOn.clear();
 }
 
