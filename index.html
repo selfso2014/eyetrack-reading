@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description"
+    content="SeeSo Eye Tracking Demo with iOS crash prevention — GPU memory leak fix, Canvas backing store optimization">
+  <title>SeeSo Eye Tracking — iOS Safe</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Cross-Origin Isolation for WASM Threads -->
+  <script src="coi-serviceworker.js"></script>
+</head>
+
+<body>
+
+  <!-- ═══ Fullscreen Gaze Canvas ═══ -->
+  <canvas id="gazeCanvas"></canvas>
+
+  <!-- ═══ Start Screen ═══ -->
+  <div id="startScreen">
+    <h1>👁️ SeeSo Eye Tracking</h1>
+    <p>
+      iOS crash-safe eye tracking powered by SeeSo SDK v2.5.2.<br>
+      Canvas backing store leak patched. GPU memory pinned.
+    </p>
+    <div style="font-size:12px; opacity:0.6; margin:8px 0;">
+      <strong>Version:</strong> 3.0.0 &nbsp;|&nbsp;
+      <strong>Build:</strong> 2026-03-01 21:41 KST
+    </div>
+    <button id="btnStart">Start Eye Tracking</button>
+    <p style="font-size:11px; margin-top:12px; opacity:0.4;">
+      Camera permission required. All processing is on-device.
+    </p>
+  </div>
+
+  <!-- ═══ HUD ═══ -->
+  <div id="hud">
+    <div id="statusText">Ready</div>
+    <div class="pill-row">
+      <span class="pill" id="pillCoi">COI: -</span>
+      <span class="pill" id="pillCam">Cam: -</span>
+      <span class="pill" id="pillSdk">SDK: -</span>
+      <span class="pill" id="pillTrack">Track: -</span>
+      <span class="pill" id="pillCal">Cal: -</span>
+    </div>
+  </div>
+
+  <!-- ═══ Gaze Info (top-right) ═══ -->
+  <div id="gazeInfo">Gaze: -</div>
+
+  <!-- ═══ Calibration Overlay ═══ -->
+  <div id="calOverlay">
+    <p id="calInstruction">Look at the glowing dot and keep your head still.</p>
+    <div id="calDot"></div>
+    <div id="calProgress">0%</div>
+  </div>
+
+  <!-- ═══ Memory Monitor (bottom-left) ═══ -->
+  <div id="memMonitor">Heap: N/A</div>
+
+  <!-- ═══ Debug Panel (bottom-right) ═══ -->
+  <div id="debugToggle">🐞</div>
+  <pre id="debugPanel"></pre>
+  <div id="debugToolbar">
+    <button class="dbg-btn" id="btnCopyLogs">📋 Copy</button>
+  </div>
+
+  <!-- Hidden video for camera preview (optional) -->
+  <video id="preview" playsinline autoplay muted
+    style="position:fixed;width:1px;height:1px;top:0;left:0;opacity:0;pointer-events:none;z-index:-1;">
+  </video>
+
+  <!-- ═══ Reading Layout ═══ -->
+  <div id="readingLayout" class="hidden">
+
+    <!-- Left: Passage Panel -->
+    <div id="passagePanel">
+      <div class="panel-header">📖 지문</div>
+      <div class="passage-intro">[1~3] 다음 글을 읽고 물음에 답하시오.</div>
+
+      <p class="passage-para" data-aoi="para-0">
+        밑줄 긋기는 일상적으로 유용하게 활용할 수 있는 독서 전략이다. 밑줄 긋기는 정보를 머릿속에 저장하고 기억한 내용을 떠올리는 데 도움이 된다. 독자로 하여금 표시한 부분에 주의를 기울이도록 해 정보를 머릿속에 저장하도록 돕고, 표시한 부분이 독자에게 시각적 자극을 주어 기억한 내용을 떠올리는 데 단서가 되기 때문이다. 이러한 점에서 밑줄 긋기는 일반적인 독서 상황뿐 아니라 학습 상황에서도 유용하다. 또한 밑줄 긋기는 방대한 정보들 가운데 중요한 정보를 추리는 데에도 효과적이며, 표시한 부분이 일종의 색인과 같은 역할을 하여 독자가 내용을 다시 찾아보는 데에도 용이하다.
+      </p>
+
+      <p class="passage-para" data-aoi="para-1">
+        통상적으로 독자는 글을 읽는 중에 바로바로 밑줄 긋기를 한다. 그러다 보면 밑줄이 많아지고 복잡해져 밑줄 긋기의 효과가 줄어든다. 또한 밑줄 긋기를 신중하게 하지 않으면 잘못 표시한 밑줄을 삭제하기 위해 되돌아가느라 독서의 흐름이 방해받게 되므로 효과적으로 밑줄 긋기를 하는 것이 중요하다.
+      </p>
+
+      <p class="passage-para" data-aoi="para-2">
+        밑줄 긋기의 효과를 얻기 위한 방법에는 몇 가지가 있다. 우선 글을 읽는 중에는 문장이나 문단에 나타난 정보 간의 상대적 중요도를 결정할 때까지 밑줄 긋기를 잠시 늦추었다가 중요한 정보에 밑줄 긋기를 한다. 이때 중요한 정보는 독서 목적에 따라 달라질 수 있다는 점을 고려한다. 또한 자신만의 밑줄 긋기 표시 체계를 세워 밑줄 이외에 다른 기호도 사용할 수 있다. 밑줄 긋기 표시 체계는 밑줄 긋기가 필요한 부분에 특정 기호를 사용하여 표시하기로 독자가 미리 정해 놓는 것이다. 예를 들면 하나의 기준으로 묶을 수 있는 정보들에 동일한 기호를 붙이거나 순차적인 번호를 붙이기도 하는 것 등이다. 이는 기본적인 밑줄 긋기를 확장한 방식이라 할 수 있다.
+      </p>
+
+      <p class="passage-para" data-aoi="para-3">
+        밑줄 긋기는 어떠한 수준의 독자라도 쉽게 사용할 수 있다는 점 때문에 연습 없이 능숙하게 사용할 수 있다고 오해되어 온 경향이 있다. 그러나 본질적으로 밑줄 긋기는 중요한 정보가 무엇인지에 대한 판단이 선행되어야 한다는 점에서 단순하지 않다. <em class="underline-ref">㉠밑줄 긋기의 방법을 이해하고 잘 사용하는 것은 글을 능동적으로 읽어 나가는 데 도움이 될 수 있다.</em>
+      </p>
+    </div>
+
+    <!-- Right: Questions Panel -->
+    <div id="questionsPanel">
+      <div class="panel-header">📝 문제</div>
+
+      <!-- Question 1 -->
+      <div class="question-block" data-aoi="q-1">
+        <div class="question-header">
+          <span class="question-num">1.</span>
+          <span class="question-text">윗글의 내용과 일치하지 않는 것은?</span>
+        </div>
+        <ol class="choice-list">
+          <li>밑줄 긋기는 일반적인 독서 상황에서 도움이 된다.</li>
+          <li>밑줄 이외의 다른 기호를 밑줄 긋기에 사용하는 것이 가능하다.</li>
+          <li>밑줄 긋기는 누구나 연습 없이도 능숙하게 사용할 수 있는 전략이다.</li>
+          <li>밑줄 긋기로 표시한 부분은 독자가 내용을 다시 찾아보는 데 유용하다.</li>
+          <li>밑줄 긋기로 표시한 부분이 독자에게 시각적인 자극을 주어 기억한 내용을 떠올리는 데 도움이 된다.</li>
+        </ol>
+      </div>
+
+      <!-- Question 2 -->
+      <div class="question-block" data-aoi="q-2">
+        <div class="question-header">
+          <span class="question-num">2.</span>
+          <span class="question-text">㉠에 해당하는 내용으로 가장 적절한 것은?</span>
+        </div>
+        <ol class="choice-list">
+          <li>글을 다시 읽을 때를 대비해서 되도록 많은 부분에 밑줄 긋기를 하며 읽는다.</li>
+          <li>글 전체에 주의를 기울일 수 있도록 글을 읽고 있을 때에는 밑줄 긋기를 하지 않는다.</li>
+          <li>정보의 중요도를 판정하기 어려우면 우선 밑줄 긋기를 한 후 잘못 그은 밑줄을 삭제한다.</li>
+          <li>주요한 정보를 추릴 수 있도록 자신이 만든 밑줄 긋기 표시 체계에 따라 밑줄 긋기를 한다.</li>
+          <li>글에 반복되는 어휘나 의미가 비슷한 문장이 나올 때마다 바로바로 밑줄 긋기를 하며 글을 읽는다.</li>
+        </ol>
+      </div>
+
+      <!-- Question 3 -->
+      <div class="question-block" data-aoi="q-3">
+        <div class="question-header">
+          <span class="question-num">3.</span>
+          <span class="question-text">윗글을 바탕으로 학생이 다음과 같이 밑줄 긋기를 했다고 할 때, 이에 대한 평가로 적절하지 않은 것은? <span class="score-badge">[3점]</span></span>
+        </div>
+        <div class="q3-material">
+          <div class="q3-row"><span class="q3-label">〔독서 목적〕</span> 고래의 외형적 특징에 대한 정보 습득</div>
+          <div class="q3-row"><span class="q3-label">〔표시 기호〕</span> [&nbsp;&nbsp;],&nbsp; 1)·2),&nbsp; √,&nbsp; ～～～</div>
+          <div class="q3-row">
+            <div class="q3-label">〔독서 자료〕</div>
+            <div class="q3-paragraphs">
+              <p>고래는 육지 <span class="q3-bracket">[포유동물]</span>에서 기원했지만, 수중 생활에 적응하여 새끼를 수중에서 낳는다. <span class="q3-nummark">1)</span>암컷들은 새끼를 낳을 때 서로 도와주며, <span class="q3-nummark">2)</span>어미들은 새끼들을 정성껏 보호한다.</p>
+              <p><span class="q3-bracket">[고래의 생김새]</span>는 고래의 종류마다 다른데, <span class="q3-check">대체로 몸길이는</span> <span class="q3-check">1.3m에서 30m에 이른다</span>. <span class="q3-check">피부에는 털이 없거나 아주 짧게 나 있다</span>. 지느러미는 배를 젓는 노와 같은 형태이고, 헤엄칠 때 수평을 유지하는 기능을 한다.</p>
+              <p>고래는 폐로 호흡하므로 물속에서 숨을 쉴 수 없다. 고래의 머리 꼭대기에는 분수공이 있다. <span class="q3-wave">물속에서 참았던 숨을 분수공으로 내뿜고 다시 숨을 들이마신 뒤 잠수한다.</span> 작은 고래들은 몇 분밖에 숨을 참지 못하지만, 큰 고래들은 1시간 정도 물속에 머물 수 있다.</p>
+            </div>
+          </div>
+        </div>
+        <ol class="choice-list">
+          <li>독서 목적을 고려하면, 1문단에서 '[ ]'로 표시한 부분은 적절하지 않게 밑줄 긋기를 하였군.</li>
+          <li>독서 목적을 고려하면, 1문단에서 '1)', '2)'와 같이 순차적인 번호로 표시한 부분은 적절하지 않게 밑줄 긋기를 하였군.</li>
+          <li>2문단에서 '[ ]'로 표시한 부분을 보니, 독서 목적에 관련된 주요 어구에 밑줄 긋기를 하였군.</li>
+          <li>독서 목적을 고려하면, 2문단에서는 '지느러미는 배를 젓는 노와 같은 형태'에 '√'를 누락하였군.</li>
+          <li>'～～～'로 표시한 부분을 보니, 독서 목적을 고려하여 3문단 내에서 정보 간의 상대적인 중요도를 판단해 중요한 문장에 밑줄 긋기를 하였군.</li>
+        </ol>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ App Script ═══ -->
+  <script src="js/app.js"></script>
+</body>
+
+</html>
