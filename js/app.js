@@ -697,10 +697,41 @@ function onCalFinish(calibrationData) {
 
     // [FIX] 캘리브레이션 후 800ms GPU 플러시 대기 (iPhone OOM 방지)
     els.calOverlay?.classList.remove('active');
-  /**
+    setPill(els.pillCal, 'Cal: done', 'ok');
+    setStatus('Calibration complete! Eye tracking is active.');
+
+    _calProgress  = 0;
+    _calPointIndex = 0;
+
+    // 콜백 정리
+    _seeso.removeCalibrationNextPointCallback(onCalNextPoint);
+    _seeso.removeCalibrationProgressCallback(onCalProgress);
+    _seeso.removeCalibrationFinishCallback(onCalFinish);
+
+    // 캘리브레이션 데이터 저장 (재사용 가능)
+    if (calibrationData) {
+        try {
+            const dataStr = JSON.stringify({
+                vector: calibrationData.vector,
+                vectorLength: calibrationData.vectorLength,
+            });
+            localStorage.setItem('eyetrack_cal_data', dataStr);
+            logI('cal', 'Calibration data saved to localStorage');
+        } catch (_) { }
+    }
+
+    // ── 독해 화면 전환 (GPU 플러시 대기 후 800ms) ──
+    setTimeout(() => showReadingLayout(), 800);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §12b. Reading Layout & AOI Detection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
  * 시선 좌표로 AOI 히트 판정 + 디버그 HUD 업데이트.
  *
- * [Bug #2 수정] 추적 소실(눈 깨짜임/눈 움직임 등) 중 checkAOI 가 호출안됨.
+ * [Bug #2 수정] 추적 소실(눈 깜빡임/head movement) 중 checkAOI 가 호출안됨.
  *   이때 _aoiLastHitTime 이 갱신안 되므로 grace직전에 타이머 RESET됨.
  *   해결: 마지막 checkAOI 호출~현재간 간격(gap) 만큼 _aoiLastHitTime 를 앞당김
  *         → 추적 소실 구간 동안 grace 카운트다운 일시정지(freeze) 효과
@@ -708,11 +739,11 @@ function onCalFinish(calibrationData) {
  * [Bug #3 수정] 히트 rect 를 좌우 +30px, 상하 +10px 확장
  *         → questionViewport padding 영역에 시선이 나와도 hit 판정
  */
-const _AOI_DWELL_MS     = 800;   // 테두리 ON 추적 시간 ms (0.8초)
-const _AOI_GRACE_MS     = 800;   // 일시 이탈 허용 ms (0.8초)
-const _AOI_HIT_PAD_X    =  30;   // rect 좌우 확장 px (패드 영역 포함)
-const _AOI_HIT_PAD_Y    =  10;   // rect 상하 확장 px
-const _AOI_GAP_FREEZE   =  50;   // 이 ms 이상 호출 간격 = 추적 소실 간주
+const _AOI_DWELL_MS   = 800;  // 테두리 ON 추적 시간 ms (0.8초)
+const _AOI_GRACE_MS   = 800;  // 일시 이탈 허용 ms (0.8초)
+const _AOI_HIT_PAD_X  =  30;  // rect 좌우 확장 px (패드 영역 포함)
+const _AOI_HIT_PAD_Y  =  10;  // rect 상하 확장 px
+const _AOI_GAP_FREEZE =  50;  // 이 ms 이상 호출 간격 = 추적 소실 간주
 
 function checkAOI(gazeX, gazeY) {
     if (!_aoiVisible) return;
@@ -782,9 +813,7 @@ function checkAOI(gazeX, gazeY) {
     _updateAOIDebugHud(gazeX, gazeY, currentHit, now);
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// §12b. Reading Layout & AOI Detection
-// ───────────────────────────────────────────────────────────────────────────────
+
 
 function showReadingLayout() {
     const layout = document.getElementById('readingLayout');
@@ -926,65 +955,7 @@ function buildAOIList() {
     logI('reading', `AOI 목록: ${_aoiElements.map(el => el.dataset.aoi).join(', ')}`);
 }
 
-/**
- * 시선 좌표로 AOI 히트 판정.
- * - trackingState 0(성공) 및 1(낙은신뢰도) 모두 수락
- * - 진입 시각을 기록하여 1000ms 추적 후 테두리 ON
- * - 300ms 유예기간: gaze가 일시적 이탈해도 진입 시각을 유지
- */
-const _AOI_DWELL_MS = 1000;   // 1초 응시 후 테두리 ON
-const _AOI_GRACE_MS =  300;   // 일시적 이탈 허용 시간 ms
 
-function checkAOI(gazeX, gazeY) {
-    if (!_aoiVisible) return;
-
-    const now        = Date.now();
-    const currentHit = new Set();
-
-    _aoiElements.forEach(el => {
-        const r = el.getBoundingClientRect();
-        if (gazeX >= r.left && gazeX <= r.right && gazeY >= r.top && gazeY <= r.bottom) {
-            currentHit.add(el.dataset.aoi);
-        }
-    });
-
-    // ■ 응시 중: 진입 시각 기록 + 1초 달성 시 테두리 ON
-    currentHit.forEach(id => {
-        _aoiLastHitTime[id] = now;         // 마지막 히트 시각 갱신 (유예 연산)
-        if (!_aoiEnterTime[id]) {
-            _aoiEnterTime[id] = now;       // 새로 진입
-            logI('aoi', `${id} 진입`);
-        }
-        const dwell = now - _aoiEnterTime[id];
-        if (dwell >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
-            const el = document.querySelector(`[data-aoi="${id}"]`);
-            if (el) el.classList.add('aoi-active');
-            _aoiBorderOn.add(id);
-            logI('aoi', `${id} 테두리 ON (${dwell}ms)`);
-        }
-    });
-
-    // ■ 이탈 체크: 유예기간(300ms) 이후에만 진입시각 삭제
-    for (const id in _aoiEnterTime) {
-        if (!currentHit.has(id)) {
-            const lastHit = _aoiLastHitTime[id] || 0;
-            if (now - lastHit > _AOI_GRACE_MS) {
-                // 원신한 이탈 확정됨 → 진입 시각 삭제
-                delete _aoiEnterTime[id];
-                delete _aoiLastHitTime[id];
-                // 지문 문단: 이탈 즉시 OFF
-                if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
-                    const el = document.querySelector(`[data-aoi="${id}"]`);
-                    if (el) el.classList.remove('aoi-active');
-                    _aoiBorderOn.delete(id);
-                    logI('aoi', `${id} 테두리 OFF`);
-                }
-                // 문제 AOI: 내비 버튼 클릭까지 테두리 유지
-            }
-            // else: 유예기간 내에 있으면 화선 진행 유지
-        }
-    }
-}
 
 /** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
