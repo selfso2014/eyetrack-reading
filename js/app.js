@@ -740,11 +740,29 @@ function onCalFinish(calibrationData) {
  *   여러 번 봐도 합산 → 이탈해도 리셋 안 됨.
  *   _AOI_RESET_MS(3초) 동안 전혀 안 보면 그때 리셋.
  */
-const _AOI_DWELL_MS  = 500;   // 누적 500ms 달성 시 테두리 ON
+const _AOI_DWELL_MS  = 300;   // 누적 300ms 달성 시 테두리 ON
 const _AOI_RESET_MS  = 3000;  // 3초 동안 안 보면 누적값 리셋
-const _AOI_HIT_PAD_X =   50;  // rect 좌우 확장 px (더 넓게)
-const _AOI_HIT_PAD_Y =   15;  // rect 상하 확장 px
+const _AOI_HIT_PAD_X =   60;  // rect 좌우 확장 px
+const _AOI_HIT_PAD_Y =   20;  // rect 상하 확장 px
 const _AOI_FRAME_CAP =  100;  // frame delta 최대 ms (큰 간격 무시)
+
+// AOI 테두리: inline style 직접 주입 (구 CSS 캐시 완전 우회)
+function _applyAOIBorder(el) {
+    el.classList.add('aoi-active');
+    el.style.setProperty('outline',      '4px solid #34d399', 'important');
+    el.style.setProperty('border-color', '#34d399',           'important');
+    el.style.setProperty('box-shadow',
+        '0 0 0 6px rgba(52,211,153,0.3), 0 0 24px rgba(52,211,153,0.5)', 'important');
+    el.style.setProperty('background', 'rgba(52,211,153,0.07)', 'important');
+    logI('aoi', `■ _applyAOIBorder: el.id=${el.dataset.aoi} outline=${el.style.outline}`);
+}
+function _removeAOIBorder(el) {
+    el.classList.remove('aoi-active');
+    el.style.removeProperty('outline');
+    el.style.removeProperty('border-color');
+    el.style.removeProperty('box-shadow');
+    el.style.removeProperty('background');
+}
 
 function checkAOI(gazeX, gazeY) {
     if (!_aoiVisible) return;
@@ -755,6 +773,8 @@ function checkAOI(gazeX, gazeY) {
     const currentHit = new Set();
     _aoiElements.forEach(el => {
         const r = el.getBoundingClientRect();
+        // display:none 요소(rect 다 0) 대상 제외
+        if (r.width === 0 && r.height === 0) return;
         if (gazeX >= r.left  - _AOI_HIT_PAD_X &&
             gazeX <= r.right + _AOI_HIT_PAD_X &&
             gazeY >= r.top   - _AOI_HIT_PAD_Y &&
@@ -769,18 +789,21 @@ function checkAOI(gazeX, gazeY) {
         _aoiLastHitTs[id] = now;
 
         if (prevTs) {
-            const dt = Math.min(now - prevTs, _AOI_FRAME_CAP); // 이상치 제거
+            const dt = Math.min(now - prevTs, _AOI_FRAME_CAP);
             _aoiDwellAccum[id] = (_aoiDwellAccum[id] || 0) + dt;
         } else {
-            // 새로 진입 (처음이거나 리셋 후)
             if (!_aoiDwellAccum[id]) _aoiDwellAccum[id] = 0;
             logI('aoi', `${id} 진입 (누적:${_aoiDwellAccum[id]}ms)`);
         }
 
-        // 테두리 ON 조건: 누적 >= 500ms
+        // 테두리 ON: 누적 300ms 이상
         if (_aoiDwellAccum[id] >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
             const el = document.querySelector(`[data-aoi="${id}"]`);
-            if (el) el.classList.add('aoi-active');
+            if (el) {
+                _applyAOIBorder(el);
+            } else {
+                logI('aoi', `⚠️ ${id}: querySelector 답 null — DOM 에 없음`);
+            }
             _aoiBorderOn.add(id);
             logI('aoi', `✅ ${id} 테두리 ON (누적 ${_aoiDwellAccum[id]}ms)`);
         }
@@ -793,10 +816,9 @@ function checkAOI(gazeX, gazeY) {
                 logI('aoi', `${id} 누적 리셋 (${_aoiDwellAccum[id]}ms → 0)`);
                 delete _aoiLastHitTs[id];
                 delete _aoiDwellAccum[id];
-                // 문단: 3초 후 테두리 OFF
                 if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
                     const el = document.querySelector(`[data-aoi="${id}"]`);
-                    if (el) el.classList.remove('aoi-active');
+                    if (el) _removeAOIBorder(el);
                     _aoiBorderOn.delete(id);
                     logI('aoi', `${id} 테두리 OFF`);
                 }
@@ -804,7 +826,7 @@ function checkAOI(gazeX, gazeY) {
         }
     }
 
-    // ── 디버그 HUD 업데이트 ──
+    // ── 디버그 HUD ──
     _updateAOIDebugHud(gazeX, gazeY, currentHit, now);
 }
 
@@ -909,12 +931,13 @@ function showQuestion(qIdx) {
  * '다음문제' 버튼이 마지막 문제에서 눌리면 세션 종료.
  */
 function navigateQuestion(delta) {
-    // 현재 문제 AOI 진입 시각 및 테두리 지우기 (내비 = AOI 종료)
+    // 현재 문제 AOI 누적값 및 테두리 지우기 (내비 = AOI 종료)
     const curAoiId = `q-${_currentQIdx + 1}`;
-    delete _aoiEnterTime[curAoiId];
+    delete _aoiDwellAccum[curAoiId];   // [FIX] _aoiEnterTime → _aoiDwellAccum
+    delete _aoiLastHitTs[curAoiId];    // [FIX] _aoiLastHitTime → _aoiLastHitTs
     _aoiBorderOn.delete(curAoiId);
     const curEl = document.querySelector(`[data-aoi="${curAoiId}"]`);
-    if (curEl) curEl.classList.remove('aoi-active');
+    if (curEl) _removeAOIBorder(curEl);
 
     const newIdx = _currentQIdx + delta;
     if (newIdx >= _TOTAL_QUESTIONS) {
@@ -954,11 +977,11 @@ function buildAOIList() {
 
 /** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
-    _aoiElements.forEach(el => el.classList.remove('aoi-active'));
+    _aoiElements.forEach(el => _removeAOIBorder(el));
     _aoiDwellAccum = {};
     _aoiLastHitTs  = {};
     _aoiBorderOn.clear();
-    logI('aoi', 'clearAllAOI: 모든 테두리 삭제, 누적값 리셋');
+    logI('aoi', 'clearAllAOI: 모든 테두리 제거, 누적값 리셋');
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
