@@ -483,14 +483,15 @@ let _currentQIdx = 0;
 let _sessionStartTime = null;
 let _timerInterval    = null;
 
-// ── AOI 드웰(dwell) 상태 ──
-let _aoiEnterTime     = {};         // { aoiId: 시선 진입 시각 ms }
-let _aoiLastHitTime   = {};         // { aoiId: 마지막 히트 시각 ms }
-let _aoiBorderOn      = new Set();  // 녹색 테두리 켜진 AOI id 집합
-let _lastCheckAOITime = 0;          // checkAOI 마지막 호출 시각 (추적 소실 구간 감지)
+// ── AOI 누적 드웰(cumulative dwell) 상태 ──
+// 연속 응시 시간이 아닌 '총 누적 응시 시간'을 측정한다.
+// 독서 중 사케이드로 잠깐 벗어나도 누적값이 유지된다.
+let _aoiDwellAccum   = {};         // { aoiId: 총 누적 응시 ms }
+let _aoiLastHitTs    = {};         // { aoiId: 마지막 gaze hit 시각 (frame delta 계산) }
+let _aoiBorderOn     = new Set();  // 현재 녹색 테두리 켜진 AOI id 집합
 
 // ── AOI 디버그 표시 상태 ──
-let _aoiDebugVisible  = true;       // 독해 모드 진입 시 자동 표시
+let _aoiDebugVisible = true;       // 독해 모드 진입 시 자동 표시
 
 // ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
@@ -729,43 +730,29 @@ function onCalFinish(calibrationData) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * 시선 좌표로 AOI 히트 판정 + 디버그 HUD 업데이트.
+ * [누적 드웰 알고리즘] 시선 좌표로 AOI 히트 판정 + 테두리 ON/OFF + 디버그 HUD.
  *
- * [Bug #2 수정] 추적 소실(눈 깜빡임/head movement) 중 checkAOI 가 호출안됨.
- *   이때 _aoiLastHitTime 이 갱신안 되므로 grace직전에 타이머 RESET됨.
- *   해결: 마지막 checkAOI 호출~현재간 간격(gap) 만큼 _aoiLastHitTime 를 앞당김
- *         → 추적 소실 구간 동안 grace 카운트다운 일시정지(freeze) 효과
+ * 기존 방식 (enter-time based)의 문제:
+ *   독서 중 사케이드로 요소를 잠깐 벗어나면 타이머 RESET → 800ms 도달 불가
  *
- * [Bug #3 수정] 히트 rect 를 좌우 +30px, 상하 +10px 확장
- *         → questionViewport padding 영역에 시선이 나와도 hit 판정
+ * 새 방식 (cumulative dwell):
+ *   요소를 바라본 매 frame의 시간(delta)을 누적한다.
+ *   여러 번 봐도 합산 → 이탈해도 리셋 안 됨.
+ *   _AOI_RESET_MS(3초) 동안 전혀 안 보면 그때 리셋.
  */
-const _AOI_DWELL_MS   = 800;  // 테두리 ON 추적 시간 ms (0.8초)
-const _AOI_GRACE_MS   = 800;  // 일시 이탈 허용 ms (0.8초)
-const _AOI_HIT_PAD_X  =  30;  // rect 좌우 확장 px (패드 영역 포함)
-const _AOI_HIT_PAD_Y  =  10;  // rect 상하 확장 px
-const _AOI_GAP_FREEZE =  50;  // 이 ms 이상 호출 간격 = 추적 소실 간주
+const _AOI_DWELL_MS  = 500;   // 누적 500ms 달성 시 테두리 ON
+const _AOI_RESET_MS  = 3000;  // 3초 동안 안 보면 누적값 리셋
+const _AOI_HIT_PAD_X =   50;  // rect 좌우 확장 px (더 넓게)
+const _AOI_HIT_PAD_Y =   15;  // rect 상하 확장 px
+const _AOI_FRAME_CAP =  100;  // frame delta 최대 ms (큰 간격 무시)
 
 function checkAOI(gazeX, gazeY) {
     if (!_aoiVisible) return;
 
     const now = Date.now();
 
-    // ── [Bug #2] 추적 소실 중 grace 카운트다운 FREEZE ──
-    if (_lastCheckAOITime > 0) {
-        const gap = now - _lastCheckAOITime;
-        if (gap > _AOI_GAP_FREEZE) {
-            // gap 만큼 _aoiLastHitTime 을 앞당김 → grace 카운트다운 일시정지
-            for (const id in _aoiLastHitTime) {
-                _aoiLastHitTime[id] += gap;
-            }
-            logI('aoi', `추적소실 ${gap}ms → grace 타이머 freeze`);
-        }
-    }
-    _lastCheckAOITime = now;
-
+    // ── 히트 판정 (확장된 rect) ──
     const currentHit = new Set();
-
-    // ── [Bug #3] rect 확장 효과로 히트 판정 ──
     _aoiElements.forEach(el => {
         const r = el.getBoundingClientRect();
         if (gazeX >= r.left  - _AOI_HIT_PAD_X &&
@@ -776,29 +763,37 @@ function checkAOI(gazeX, gazeY) {
         }
     });
 
-    // ■ 응시 중: 진입 시각 기록 + DWELL 달성 시 테두리 ON
+    // ── 히트 요소: frame delta 누적 ──
     currentHit.forEach(id => {
-        _aoiLastHitTime[id] = now;
-        if (!_aoiEnterTime[id]) {
-            _aoiEnterTime[id] = now;
-            logI('aoi', `${id} 진입`);
+        const prevTs = _aoiLastHitTs[id];
+        _aoiLastHitTs[id] = now;
+
+        if (prevTs) {
+            const dt = Math.min(now - prevTs, _AOI_FRAME_CAP); // 이상치 제거
+            _aoiDwellAccum[id] = (_aoiDwellAccum[id] || 0) + dt;
+        } else {
+            // 새로 진입 (처음이거나 리셋 후)
+            if (!_aoiDwellAccum[id]) _aoiDwellAccum[id] = 0;
+            logI('aoi', `${id} 진입 (누적:${_aoiDwellAccum[id]}ms)`);
         }
-        const dwell = now - _aoiEnterTime[id];
-        if (dwell >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
+
+        // 테두리 ON 조건: 누적 >= 500ms
+        if (_aoiDwellAccum[id] >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
             const el = document.querySelector(`[data-aoi="${id}"]`);
             if (el) el.classList.add('aoi-active');
             _aoiBorderOn.add(id);
-            logI('aoi', `${id} 테두리 ON (${dwell}ms)`);
+            logI('aoi', `✅ ${id} 테두리 ON (누적 ${_aoiDwellAccum[id]}ms)`);
         }
     });
 
-    // ■ 이탈 체크: grace 시간 초과 후에만 타이머 삭제
-    for (const id in _aoiEnterTime) {
+    // ── 비히트 요소: 3초 이상 안 보면 누적 리셋 ──
+    for (const id in _aoiLastHitTs) {
         if (!currentHit.has(id)) {
-            const lastHit = _aoiLastHitTime[id] || 0;
-            if (now - lastHit > _AOI_GRACE_MS) {
-                delete _aoiEnterTime[id];
-                delete _aoiLastHitTime[id];
+            if (now - _aoiLastHitTs[id] > _AOI_RESET_MS) {
+                logI('aoi', `${id} 누적 리셋 (${_aoiDwellAccum[id]}ms → 0)`);
+                delete _aoiLastHitTs[id];
+                delete _aoiDwellAccum[id];
+                // 문단: 3초 후 테두리 OFF
                 if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
                     const el = document.querySelector(`[data-aoi="${id}"]`);
                     if (el) el.classList.remove('aoi-active');
@@ -960,10 +955,10 @@ function buildAOIList() {
 /** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
     _aoiElements.forEach(el => el.classList.remove('aoi-active'));
-    _aoiEnterTime     = {};
-    _aoiLastHitTime   = {};
+    _aoiDwellAccum = {};
+    _aoiLastHitTs  = {};
     _aoiBorderOn.clear();
-    _lastCheckAOITime = 0;   // freeze 추적 중단 시간 초기화
+    logI('aoi', 'clearAllAOI: 모든 테두리 삭제, 누적값 리셋');
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -981,27 +976,28 @@ function _updateAOIDebugHud(gazeX, gazeY, currentHit, now) {
     if (!_aoiDebugVisible) { hud.style.display = 'none'; return; }
     hud.style.display = 'block';
 
-    const stNames = ['\u2705OK', '\u26a0\ufe0fLOW', '\u274cUNSUP', '\u274cNOFACE'];
+    const stNames = ['✅OK', '⚠️LOW', '❌UNSUP', '❌NOFACE'];
     const st      = stNames[gazeState.trackingState] ?? `?(${gazeState.trackingState})`;
 
     const lines = [
-        `\ud83c\udfaf AOI \ub514\ubc84\uadf8 [DBG \ubc84\ud2bc\uc73c\ub85c \uc228\uae40]`,
-        `\uc2dc\uc120: (${gazeX?.toFixed(0) ?? '-'}, ${gazeY?.toFixed(0) ?? '-'})  ${st}`,
-        `\uc601\uc5ed ON: ${_aoiVisible}  |  \uc694\uc18c: ${_aoiElements.length}\uac1c`,
-        `\ud788\ud2b8: [${[...currentHit].join(', ') || '-'}]`,
-        `\ud14c\ub450\ub9ac: [${[..._aoiBorderOn].join(', ') || '-'}]`,
-        `\u2500\u2500 \ub4dc\uc6f0 \uc9c4\ud589 (${_AOI_DWELL_MS}ms \ubaa9\ud45c) \u2500\u2500`
+        `🎯 AOI 디버그 [누적드웰 v2]`,
+        `시선: (${gazeX?.toFixed(0) ?? '-'}, ${gazeY?.toFixed(0) ?? '-'})  ${st}`,
+        `영역 ON: ${_aoiVisible}  |  요소: ${_aoiElements.length}개`,
+        `히트: [${[...currentHit].join(', ') || '-'}]`,
+        `테두리: [${[..._aoiBorderOn].join(', ') || '-'}]`,
+        `── 누적 응시 (목표 ${_AOI_DWELL_MS}ms ──)`
     ];
 
     _aoiElements.forEach(el => {
         const id     = el.dataset.aoi;
-        const enterT = _aoiEnterTime[id];
-        const dwell  = enterT ? Math.min(_AOI_DWELL_MS, now - enterT) : 0;
-        const pct    = Math.round(dwell / _AOI_DWELL_MS * 10);
-        const bar    = '\u2588'.repeat(pct) + '\u2591'.repeat(10 - pct);
-        const inHit  = currentHit.has(id)  ? '\ud83d\udc41' : '  ';
-        const onBrd  = _aoiBorderOn.has(id) ? '\ud83d\udfe9' : '  ';
-        lines.push(`${onBrd}${inHit} ${id.padEnd(8)} ${bar} ${Math.round(dwell)}ms`);
+        const accum  = _aoiDwellAccum[id] || 0;          // 누적값
+        const pct    = Math.round(Math.min(accum / _AOI_DWELL_MS, 1) * 10);
+        const bar    = '█'.repeat(pct) + '░'.repeat(10 - pct);
+        const inHit  = currentHit.has(id)   ? '👁' : '  ';
+        const onBrd  = _aoiBorderOn.has(id)  ? '🟩' : '  ';
+        const lastTs = _aoiLastHitTs[id];
+        const awaySec = lastTs ? ((now - lastTs) / 1000).toFixed(1) + 's' : '-';
+        lines.push(`${onBrd}${inHit} ${id.padEnd(8)} ${bar} ${accum}ms (이탈:${awaySec})`);
     });
 
     hud.textContent = lines.join('\n');
