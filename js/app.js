@@ -741,7 +741,7 @@ function onCalFinish(calibrationData) {
  *   _AOI_RESET_MS(3초) 동안 전혀 안 보면 그때 리셋.
  */
 const _AOI_DWELL_MS  = 300;   // 누적 300ms 달성 시 테두리 ON
-const _AOI_RESET_MS  = 3000;  // 3초 동안 안 보면 누적값 리셋
+const _AOI_RESET_MS  = 1500;  // 1.5초 비응시 시 테두리 OFF + 누적 리셋
 const _AOI_HIT_PAD_X =   60;  // rect 좌우 확장 px
 const _AOI_HIT_PAD_Y =   20;  // rect 상하 확장 px
 const _AOI_FRAME_CAP =  100;  // frame delta 최대 ms (큰 간격 무시)
@@ -809,19 +809,20 @@ function checkAOI(gazeX, gazeY) {
         }
     });
 
-    // ── 비히트 요소: 3초 이상 안 보면 누적 리셋 ──
+    // ── 비히트 요소: 1.5초 이상 안 보면 테두리 OFF + 누적 리셋 ──
     for (const id in _aoiLastHitTs) {
         if (!currentHit.has(id)) {
             if (now - _aoiLastHitTs[id] > _AOI_RESET_MS) {
-                logI('aoi', `${id} 누적 리셋 (${_aoiDwellAccum[id]}ms → 0)`);
-                delete _aoiLastHitTs[id];
-                delete _aoiDwellAccum[id];
-                if (id.startsWith('para-') && _aoiBorderOn.has(id)) {
+                // 테두리 ON 상태면 OFF (para / q 모두)
+                if (_aoiBorderOn.has(id)) {
                     const el = document.querySelector(`[data-aoi="${id}"]`);
                     if (el) _removeAOIBorder(el);
                     _aoiBorderOn.delete(id);
-                    logI('aoi', `${id} 테두리 OFF`);
+                    logI('aoi', `${id} 테두리 OFF (1.5초 비응시)`);
                 }
+                delete _aoiLastHitTs[id];
+                delete _aoiDwellAccum[id];
+                logI('aoi', `${id} 누적 리셋`);
             }
         }
     }
