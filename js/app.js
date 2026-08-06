@@ -741,7 +741,7 @@ function onCalFinish(calibrationData) {
  *   _AOI_RESET_MS(3초) 동안 전혀 안 보면 그때 리셋.
  */
 const _AOI_DWELL_MS  = 300;   // 누적 300ms 달성 시 테두리 ON
-const _AOI_RESET_MS  = 1500;  // 1.5초 비응시 시 테두리 OFF + 누적 리셋
+const _AOI_RESET_MS  =    0;  // 0ms = 시선 벗어나는 즉시 테두리 OFF + 누적 리셋
 const _AOI_HIT_PAD_X =   60;  // rect 좌우 확장 px
 const _AOI_HIT_PAD_Y =   20;  // rect 상하 확장 px
 const _AOI_FRAME_CAP =  100;  // frame delta 최대 ms (큰 간격 무시)
