@@ -343,16 +343,18 @@ body {
   50%       { box-shadow: 0 0 0 7px rgba(251, 191, 36, 0); }
 }
 
-/* ?? Panels row ?? */
+/* ?€?€ Panels row ?€?€ */
 #readingPanels {
   flex: 1;
   display: flex;
   flex-direction: row;
   overflow: hidden;
   min-height: 0;
+  width: 60%;          /* 현재 대비 60% 너비 */
+  align-self: center;  /* 수평 중앙 정렬 (flex-column 부모 안에서) */
 }
 
-/* ?? Panel headers (sticky) ?? */
+/* ?€?€ Panel headers (sticky) ?€?€ */
 .panel-header {
   position: sticky;
   top: 0;
