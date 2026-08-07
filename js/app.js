@@ -1766,3 +1766,77 @@ if (els.btnStart) {
 
 logI('app', 'App loaded. Waiting for user to press Start.');
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-F-1. 시선 계산 함수 5종
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function computeDwellPerAOI(log) {
+    const dwell = {};
+    for (let i = 1; i < log.length; i++) {
+        const dt = log[i].t - log[i-1].t;
+        (log[i-1].aois || []).forEach(a => { dwell[a] = (dwell[a] || 0) + dt; });
+    }
+    return dwell;
+}
+
+function computeFixations(log) {
+    const RADIUS = 50, MIN_DUR = 100;
+    const result = [];
+    let i = 0;
+    while (i < log.length) {
+        if (log[i].s > 1) { i++; continue; }
+        let j = i + 1, cx = log[i].x, cy = log[i].y, cnt = 1;
+        while (j < log.length && log[j].s <= 1 &&
+               Math.hypot(log[j].x - cx, log[j].y - cy) < RADIUS) {
+            cx = (cx * cnt + log[j].x) / (cnt + 1);
+            cy = (cy * cnt + log[j].y) / (cnt + 1);
+            cnt++; j++;
+        }
+        const dur = log[Math.min(j, log.length - 1)].t - log[i].t;
+        if (dur >= MIN_DUR)
+            result.push({ t: log[i].t, x: cx, y: cy, dur, aoiId: (log[i].aois || [])[0] || '' });
+        i = j;
+    }
+    return result;
+}
+
+function computeRegressions(log) {
+    const THRESH = 30;
+    const result = [];
+    for (let i = 1; i < log.length; i++) {
+        const f = log[i-1], t = log[i];
+        if (f.s > 1 || t.s > 1) continue;
+        if (t.x - f.x < -THRESH &&
+            (f.aois || []).some(a => (t.aois || []).includes(a)))
+            result.push({ t: f.t, fromX: f.x, toX: t.x, dist: Math.abs(t.x - f.x), aoiId: (f.aois || [])[0] || '' });
+    }
+    return result;
+}
+
+function computeQPTransitions(log) {
+    const isQ = a => (a || []).some(x => x.startsWith('q-'));
+    const isP = a => (a || []).some(x => x.startsWith('para-'));
+    const result = [];
+    for (let i = 1; i < log.length; i++) {
+        const p = log[i-1], c = log[i];
+        if (isQ(p.aois) && isP(c.aois))
+            result.push({ t: c.t, dir: 'Q→P', fromAoi: (p.aois || [])[0] || '', toAoi: (c.aois || [])[0] || '' });
+        else if (isP(p.aois) && isQ(c.aois))
+            result.push({ t: c.t, dir: 'P→Q', fromAoi: (p.aois || [])[0] || '', toAoi: (c.aois || [])[0] || '' });
+    }
+    return result;
+}
+
+function computeEfficiency(transitions, numQ) {
+    const counts = {};
+    transitions.forEach(tr => {
+        const m = tr.fromAoi.match(/^q-(\d)/) || tr.toAoi.match(/^q-(\d)/);
+        if (m) { const k = `q-${m[1]}`; counts[k] = (counts[k] || 0) + 1; }
+    });
+    const result = {};
+    for (let qi = 1; qi <= numQ; qi++) {
+        const k = `q-${qi}`, c = counts[k] || 0;
+        result[k] = c >= 4 ? '낮음' : c >= 2 ? '보통' : '높음';
+    }
+    return result;
+}
