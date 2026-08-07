@@ -857,11 +857,18 @@ function showReadingLayout() {
     const btnTimer = document.getElementById('btnToggleTimer');
     const btnReplay = document.getElementById('btnReplay');
     const btnDbg    = document.getElementById('btnToggleDebug');
+    const btnStats  = document.getElementById('btnViewStats');
+    const btnCloseStats = document.getElementById('btnCloseStats');
+    const statsModal    = document.getElementById('gazeStatsModal');
+
     if (btnGaze)   btnGaze.onclick   = toggleGazeVisibility;
     if (btnAOI)    btnAOI.onclick    = toggleAOIVisibility;
     if (btnTimer)  btnTimer.onclick  = toggleTimer;
     if (btnReplay) btnReplay.onclick = startReplay;
     if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
+    if (btnStats)  btnStats.onclick  = showGazeStats;       // [FIX] DOMContentLoaded 대신 여기서 연결
+    if (btnCloseStats) btnCloseStats.onclick = closeGazeStats;
+    if (statsModal) statsModal.onclick = e => { if (e.target === statsModal) closeGazeStats(); };
 
     // 문제 내비게이션 버튼 연결
     const btnPrev = document.getElementById('btnPrevQ');
@@ -1632,18 +1639,3 @@ function closeGazeStats() {
     const modal = document.getElementById('gazeStatsModal');
     if (modal) modal.classList.add('hidden');
 }
-
-// 버튼 이벤트 연결
-document.addEventListener('DOMContentLoaded', () => {
-    const btnStats = document.getElementById('btnViewStats');
-    if (btnStats) btnStats.addEventListener('click', showGazeStats);
-
-    const btnClose = document.getElementById('btnCloseStats');
-    if (btnClose) btnClose.addEventListener('click', closeGazeStats);
-
-    // 오버레이 바깥 클릭으로 닫기
-    const modal = document.getElementById('gazeStatsModal');
-    if (modal) modal.addEventListener('click', e => {
-        if (e.target === modal) closeGazeStats();
-    });
-});
