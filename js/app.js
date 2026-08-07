@@ -1840,3 +1840,98 @@ function computeEfficiency(transitions, numQ) {
     }
     return result;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-F-2. 모달 제어 + Gemini AI 호출
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function closeGazeGraph() {
+    document.getElementById('gazeGraphModal')?.classList.add('hidden');
+}
+
+async function showGazeGraph() {
+    if (!_gazeLog.length) { alert('시선 데이터가 없습니다. 세션을 먼저 완료하세요.'); return; }
+
+    const log     = _gazeLog.slice();
+    const totalMs = log[log.length - 1].t;
+    const numQ    = _TOTAL_QUESTIONS || 3;
+
+    const dwell       = computeDwellPerAOI(log);
+    const fixations   = computeFixations(log);
+    const regressions = computeRegressions(log);
+    const transitions = computeQPTransitions(log);
+    const efficiency  = computeEfficiency(transitions, numQ);
+
+    const fixCounts = {}, regCounts = {};
+    fixations.forEach(f   => { if (f.aoiId) fixCounts[f.aoiId] = (fixCounts[f.aoiId] || 0) + 1; });
+    regressions.forEach(r => { if (r.aoiId) regCounts[r.aoiId] = (regCounts[r.aoiId] || 0) + 1; });
+
+    let apiKey = localStorage.getItem('gemini_api_key') || '';
+    if (!apiKey) {
+        const modal   = document.getElementById('apiKeyModal');
+        const input   = document.getElementById('apiKeyInput');
+        const btnSave = document.getElementById('btnSaveApiKey');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        input.value = '';
+        input.focus();
+        btnSave.onclick = async () => {
+            const k = input.value.trim();
+            if (!k) { alert('API Key를 입력하세요.'); return; }
+            localStorage.setItem('gemini_api_key', k);
+            modal.classList.add('hidden');
+            await _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, k);
+        };
+        return;
+    }
+    await _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, apiKey);
+}
+
+async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, apiKey) {
+    const modal  = document.getElementById('gazeGraphModal');
+    const status = document.getElementById('gazeGraphStatus');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    if (status) status.textContent = 'AI 분석 중...';
+
+    let ai = { responseType: {}, fluencyBottleneck: {} };
+    try {
+        ai = await _requestGeminiAnalysis(apiKey, { dwell, fixCounts, regCounts, transitions, userAnswers: _userAnswers });
+    } catch (e) {
+        logW('graph', 'Gemini 실패: ' + e.message);
+        if (status) status.textContent = 'AI 분석 실패 (그래프는 표시됩니다)';
+    }
+    if (status && status.textContent === 'AI 분석 중...') status.textContent = '';
+
+    const canvas = document.getElementById('gazeGraphCanvas');
+    if (canvas) drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, ai);
+}
+
+async function _requestGeminiAnalysis(apiKey, payload) {
+    const url  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const prompt = `수능 독해 인지과학 전문가로서 학생의 시선 데이터를 분석하세요. JSON만 반환하세요.
+
+AOI별 체류시간(ms):${JSON.stringify(payload.dwell)}
+픽세이션 수:${JSON.stringify(payload.fixCounts)}
+리그레션 수:${JSON.stringify(payload.regCounts)}
+Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
+사용자 답지:${JSON.stringify(payload.userAnswers)}
+
+반응유형 기준:
+- 정상인코딩:체류 보통,픽세이션 보통,리그레션 적음
+- 효율스캐닝:체류 짧음,픽세이션 적음,리그레션 거의 없음
+- 인지적멈춤:체류 길음,픽세이션 많음,리그레션 보통
+- 과잉비효율:체류 매우 길음,리그레션 많음,재방문 반복
+
+{"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+}
