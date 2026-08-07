@@ -1,4 +1,4 @@
-﻿// js/app.js — SeeSo Eye Tracking with iOS Crash Prevention
+// js/app.js — SeeSo Eye Tracking with iOS Crash Prevention
 // All patches derived from SDK v2.5.2 analysis
 // webpack-loader 코드 인라인 (file:// 프로토콜 지원: XHR 폴백 포함)
 async function loadWebpackModule(url) {
@@ -628,7 +628,6 @@ function onGaze(gazeInfo) {
             s:    gazeState.trackingState,
             aois: [..._aoiBorderOn],
             qIdx: _currentQIdx,
-            scrl: document.getElementById('passagePanel')?.scrollTop || 0,  // 지문 스크롤 위치
         });
     }
 }
@@ -1271,6 +1270,233 @@ setInterval(() => {
 }, 2000);
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// §16. [iOS] Periodic SDK Restart — WASM/GPU 메모리 누수 완전 방지
+//
+//   원리:
+//   - getImageData()는 Web API 한계로 매 프레임 ~1.2MB 할당 (우회 불가)
+//   - iOS Safari GC가 30fps 할당 속도를 따라잡지 못해 ~80초 후 OOM Kill
+//   - 50초마다 SDK를 완전히 재시작하여 누적 메모리를 0으로 리셋
+//   - 캘리브레이션 데이터는 localStorage에서 복원 → 사용자 경험 유지
+// ═══════════════════════════════════════════════════════════════════════════════
+let _restartTimer = null;
+let _isRestarting = false;
+let _restartCount = 0;
+
+function scheduleRestart() {
+    if (_restartTimer) clearTimeout(_restartTimer);
+    _restartTimer = setTimeout(() => periodicRestart(), CONFIG.RESTART_INTERVAL_MS);
+    logI('restart', `Next restart in ${CONFIG.RESTART_INTERVAL_MS / 1000}s`);
+}
+
+function cancelRestart() {
+    if (_restartTimer) {
+        clearTimeout(_restartTimer);
+        _restartTimer = null;
+    }
+}
+
+async function periodicRestart() {
+    if (_isRestarting) return;
+    _isRestarting = true;
+    _restartCount++;
+
+    logI('restart', `═══ Periodic restart #${_restartCount} starting ═══`);
+    setStatus('Memory cleanup... (auto-restart)');
+
+    // ── 1. 트래킹 중지 ──
+    _trackingActive = false;
+    try {
+        if (_rawSeeso?.thread) { _rawSeeso.thread.stop(); _rawSeeso.thread.release(); _rawSeeso.thread = null; }
+        if (_rawSeeso?.debugThread) { _rawSeeso.debugThread.stop(); _rawSeeso.debugThread.release(); _rawSeeso.debugThread = null; }
+    } catch (e) { logW('restart', `Stop thread: ${e.message}`); }
+
+    // ── 2. 카메라 트랙 해제 ──
+    try {
+        if (_rawSeeso?.track) { _rawSeeso.track.stop(); _rawSeeso.track = null; }
+        if (_rawSeeso?.imageCapture) { _rawSeeso.imageCapture = null; }
+    } catch (_) { }
+
+    // ── 3. 콜백 제거 ──
+    try {
+        _seeso?.removeGazeCallback?.(onGazeWrapped);
+        _seeso?.removeDebugCallback?.(onDebug);
+    } catch (_) { }
+
+    // ── 4. SDK deinitialize (내부 1초 setTimeout으로 WASM 정리) ──
+    try { _seeso?.deinitialize?.(); } catch (_) { }
+
+    // ── 5. 카메라 스트림 해제 ──
+    if (_mediaStream) {
+        _mediaStream.getTracks().forEach(t => t.stop());
+        _mediaStream = null;
+    }
+
+    // ── 6. 2초 대기 (SDK 내부 1초 + GC 마진) ──
+    await new Promise(r => setTimeout(r, 2000));
+
+    // ── 7. 싱글턴 + 참조 완전 해제 ──
+    try {
+        if (_rawSeeso?.constructor?.gaze) _rawSeeso.constructor.gaze = null;
+        if (_rawSeeso) {
+            _rawSeeso.initialized = false;
+            _rawSeeso.trackerModule = null;
+            _rawSeeso.eyeTracker = null;
+            _rawSeeso.imagePtr = null;
+        }
+    } catch (_) { }
+    _seeso = null;
+    _rawSeeso = null;
+
+    logI('restart', 'Old SDK released. Reinitializing...');
+
+    // ── 8. 카메라 재획득 ──
+    const camOk = await ensureCamera();
+    if (!camOk) {
+        logE('restart', 'Camera re-acquisition FAILED');
+        _isRestarting = false;
+        return;
+    }
+
+    // ── 9. SDK 재초기화 ──
+    const sdkOk = await initSDK();
+    if (!sdkOk) {
+        logE('restart', 'SDK re-init FAILED');
+        _isRestarting = false;
+        return;
+    }
+
+    // ── 10. 트래킹 재시작 ──
+    _seeso.addGazeCallback(onGazeWrapped);
+    _seeso.addDebugCallback(onDebug);
+    const trackOk = _seeso.startTracking(_mediaStream);
+    if (!trackOk) {
+        logE('restart', 'Tracking restart FAILED');
+        _isRestarting = false;
+        return;
+    }
+    _trackingActive = true;
+    setPill(els.pillTrack, 'Track: running', 'ok');
+
+    // ── 11. 패치 재적용 ──
+    setTimeout(() => patchGrabFrameAsImageData(_rawSeeso), 300);
+
+    // ── 12. 캘리브레이션 복원 (localStorage에서) ──
+    setTimeout(async () => {
+        try {
+            const saved = localStorage.getItem('eyetrack_cal_data');
+            if (saved) {
+                const calData = JSON.parse(saved);
+                await _seeso.setCalibrationData(calData);
+                logI('restart', '✅ Calibration restored from localStorage');
+                setPill(els.pillCal, 'Cal: restored', 'ok');
+                setStatus('Eye tracking active (auto-restarted)');
+            } else {
+                logW('restart', 'No saved calibration — user needs to recalibrate');
+                setStatus('Restart complete. Calibration needed.');
+                startCalibration();
+            }
+        } catch (e) {
+            logW('restart', `Calibration restore error: ${e.message}`);
+            startCalibration();
+        }
+    }, 800);
+
+    logI('restart', `═══ Restart #${_restartCount} complete ═══`);
+    _isRestarting = false;
+
+    // ── 다음 재시작 예약 ──
+    scheduleRestart();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §15. Boot Sequence
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Recover crash log from previous session
+(function checkCrashLog() {
+    try {
+        const rawTs = localStorage.getItem('eyetrack_crash_ts');
+        if (!rawTs) return;
+        const age = Date.now() - parseInt(rawTs);
+        if (age > 1800000) return; // ignore if > 30 min old
+        const raw = localStorage.getItem('eyetrack_crash_log');
+        if (!raw) return;
+        const lines = JSON.parse(raw);
+        if (lines.length > 0) {
+            logW('crash', `Recovered ${lines.length} lines from previous session crash:`);
+            lines.slice(-20).forEach(l => logBase('INFO', 'crash', l));
+        }
+    } catch (_) { }
+})();
+
+async function boot() {
+    logI('boot', `Starting... Platform: ${IS_IOS ? 'iOS' : IS_SAFARI ? 'Safari' : 'Desktop'}`);
+    logI('boot', `Config: cam=${CONFIG.MAX_CAM_WIDTH}×${CONFIG.MAX_CAM_HEIGHT} fps=${CONFIG.TARGET_FPS}`);
+
+    resizeCanvas();
+
+    // ╔════════════════════════════════════════════════════════════════╗
+    // ║  [CRITICAL] Camera FIRST, then SDK — matches TheBookWardens  ║
+    // ║  Safari/iOS may require active media context before SDK init ║
+    // ╚════════════════════════════════════════════════════════════════╝
+
+    // Step 1: Camera (must be first on iOS)
+    setStatus('Requesting camera...');
+    const camOk = await ensureCamera();
+    if (!camOk) return;
+
+    // Step 2: SDK Init (after camera is ready)
+    setStatus('Initializing SDK...');
+    const sdkOk = await initSDK();
+    if (!sdkOk) return;
+
+    // Step 3: Start Tracking (+ apply patch)
+    setStatus('Starting eye tracking...');
+
+    // Use wrapped gaze callback
+    _seeso.addGazeCallback(onGazeWrapped);
+    _seeso.addDebugCallback(onDebug);
+    const trackOk = _seeso.startTracking(_mediaStream);
+
+    if (!trackOk) {
+        setPill(els.pillTrack, 'Track: failed', 'error');
+        setStatus('⚠️ Tracking failed.');
+        return;
+    }
+
+    _trackingActive = true;
+    setPill(els.pillTrack, 'Track: running', 'ok');
+
+    // Apply critical patch after tracking starts
+    setTimeout(() => patchGrabFrameAsImageData(_rawSeeso), 300);
+
+    // Step 4: Start Calibration
+    setStatus('Preparing calibration...');
+    setTimeout(() => {
+        const calOk = startCalibration();
+        if (!calOk) setStatus('⚠️ Calibration failed to start.');
+    }, 1000);
+
+    // Step 5: [iOS] Schedule periodic restart for memory cleanup
+    if (IS_IOS || IS_SAFARI) {
+        scheduleRestart();
+        logI('boot', `[iOS] Periodic restart enabled: every ${CONFIG.RESTART_INTERVAL_MS / 1000}s`);
+    }
+}
+
+// Start button handler
+if (els.btnStart) {
+    els.btnStart.onclick = async () => {
+        els.btnStart.disabled = true;
+        els.btnStart.textContent = 'Initializing...';
+        await boot();
+        els.startScreen?.classList.add('hidden');
+    };
+}
+
+logI('app', 'App loaded. Waiting for user to press Start.');
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // §16. 누적 시선 포인트 오버레이 (스크롤 인식 + 단락별 색상)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1325,7 +1551,7 @@ function showGazeStats() {
     questionsPanel.appendChild(qc);
     var qCtx = qc.getContext('2d');
 
-    var Q_RGBA  = ['rgba(52,211,153,0.70)','rgba(251,191,36,0.70)','rgba(96,165,250,0.70)'];
+    var Q_RGBA = ['rgba(52,211,153,0.70)','rgba(251,191,36,0.70)','rgba(96,165,250,0.70)'];
 
     var pDrawn = 0, qDrawn = 0;
 
@@ -1338,11 +1564,9 @@ function showGazeStats() {
         if (f.x >= passageRect.left && f.x <= passageRect.right &&
             f.y >= passageRect.top  && f.y <= passageRect.bottom) {
 
-            // 콘텐츠 상대 좌표
             var cx = f.x - passageRect.left;
             var cy = f.y - passageRect.top + scrl;
 
-            // 어느 단락인지 판별
             var color = DFLT_RGBA;
             for (var pi = 0; pi < paraRanges.length; pi++) {
                 if (cy >= paraRanges[pi].top && cy <= paraRanges[pi].bottom) {
@@ -1369,12 +1593,11 @@ function showGazeStats() {
         }
     }
 
-    // ── UI 오버레이 (정보 배지 + 범례 + 닫기) ──
+    // ── UI 오버레이 ──
     var overlay = document.createElement('div');
     overlay.id = '_gazeOverlay';
     overlay.setAttribute('style', 'position:fixed;inset:0;z-index:9000;pointer-events:none');
 
-    // 닫기 버튼
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '\u2715 \ub2eb\uae30';
     closeBtn.setAttribute('style',
@@ -1385,7 +1608,6 @@ function showGazeStats() {
     closeBtn.addEventListener('click', closeGazeStats);
     overlay.appendChild(closeBtn);
 
-    // 정보 배지 (왼쪽 상단)
     var info = document.createElement('div');
     info.setAttribute('style',
         'position:absolute;top:14px;left:14px;pointer-events:none;'
@@ -1397,7 +1619,6 @@ function showGazeStats() {
                    + '\uac1c &nbsp;|&nbsp; \ubb38\uc81c ' + qDrawn.toLocaleString() + '\uac1c';
     overlay.appendChild(info);
 
-    // 범례 (왼쪽 하단)
     var legend = document.createElement('div');
     legend.setAttribute('style',
         'position:absolute;bottom:14px;left:14px;pointer-events:none;'
@@ -1418,10 +1639,11 @@ function showGazeStats() {
 }
 
 function closeGazeStats() {
-    var ov = document.getElementById('_gazeOverlay');
-    if (ov) ov.remove();
+    var ov  = document.getElementById('_gazeOverlay');
+    if (ov)  ov.remove();
     var pc2 = document.getElementById('_passageGazeCanvas');
     if (pc2) pc2.remove();
     var qc2 = document.getElementById('_questionsGazeCanvas');
     if (qc2) qc2.remove();
 }
+
