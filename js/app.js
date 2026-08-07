@@ -1497,159 +1497,98 @@ if (els.btnStart) {
 logI('app', 'App loaded. Waiting for user to press Start.');
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// §16. 누적 시선 통계 모달
+// §16. 누적 시선 포인트 오버레이
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** ms → "X.Xs" or "Xms" */
-function _fmtMs(ms) {
-    if (ms == null || isNaN(ms)) return '—';
-    if (ms < 1000) return `${Math.round(ms)}ms`;
-    return `${(ms / 1000).toFixed(1)}초`;
-}
-
-/** ms → "MM:SS" */
-function _fmtMmSs(ms) {
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
-}
-
-/** 진행바 HTML */
-function _barHtml(pct, colorClass) {
-    const cls = colorClass ? `stats-bar-fill ${colorClass}` : 'stats-bar-fill';
-    return `<div class="stats-bar-bg"><div class="${cls}" style="width:${Math.min(pct,100).toFixed(1)}%"></div></div>`;
-}
-
 function showGazeStats() {
-    try {
-        // 기존 모달 제거
-        var old = document.getElementById('_statsOverlay');
-        if (old) old.remove();
+    // 이미 열려있으면 토글 OFF
+    var existing = document.getElementById('_gazeOverlay');
+    if (existing) { existing.remove(); return; }
 
-        // 데이터 스냅샷
-        var snap = _gazeLog.slice();
-        var bodyHtml = '';
+    // 버튼 클릭 시점 스냅샷
+    var snap = _gazeLog.slice();
 
-        if (snap.length < 2) {
-            bodyHtml = '<p style="text-align:center;color:#9ca3af;padding:40px 0;font-size:15px">'
-                     + '아직 시선 데이터가 없습니다.<br>'
-                     + '<span style="font-size:13px;color:#6b7280">Eye tracking 시작 후 다시 확인하세요.</span>'
-                     + '</p>';
-        } else {
-            var totalMs     = snap[snap.length - 1].t;
-            var totalFrames = snap.length;
-            var okFrames    = 0;
-            for (var fi = 0; fi < snap.length; fi++) { if (snap[fi].s === 0) okFrames++; }
-            var trackRate  = Math.round(okFrames / totalFrames * 100);
-            var trackColor = trackRate >= 70 ? '#34d399' : trackRate >= 40 ? '#fbbf24' : '#f87171';
+    // ── 전체화면 오버레이 ──
+    var overlay = document.createElement('div');
+    overlay.id = '_gazeOverlay';
+    overlay.setAttribute('style',
+        'position:fixed;inset:0;z-index:9000;pointer-events:none');
 
-            // 문제별 체류
-            var qTime = [0, 0, 0];
-            for (var i = 0; i < snap.length - 1; i++) {
-                var dt = snap[i+1].t - snap[i].t;
-                var qi = snap[i].qIdx;
-                if (qi >= 0 && qi < 3) qTime[qi] += dt;
-            }
-            var qMax = Math.max(qTime[0], qTime[1], qTime[2], 1);
+    // ── 캔버스 ──
+    var canvas = document.createElement('canvas');
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    canvas.setAttribute('style', 'position:absolute;inset:0');
+    var ctx = canvas.getContext('2d');
 
-            // AOI별 테두리 시간
-            var aoiTime = {};
-            for (var j = 0; j < snap.length - 1; j++) {
-                var dt2  = snap[j+1].t - snap[j].t;
-                var aois = snap[j].aois || [];
-                for (var k = 0; k < aois.length; k++) {
-                    aoiTime[aois[k]] = (aoiTime[aois[k]] || 0) + dt2;
-                }
-            }
+    // 문제별 색상
+    var Q_COLOR = [
+        'rgba(52,211,153,0.55)',    // 문제1: 초록
+        'rgba(251,191,36,0.55)',    // 문제2: 노랑
+        'rgba(96,165,250,0.55)',    // 문제3: 파랑
+    ];
+    var Q_SOLID = ['#34d399', '#fbbf24', '#60a5fa'];
 
-            function localFmtMs(ms) {
-                if (!ms || ms <= 0) return '0ms';
-                return ms < 1000 ? Math.round(ms) + 'ms' : (ms/1000).toFixed(1) + '초';
-            }
-            function localFmtMmSs(ms) {
-                var s = Math.floor(ms/1000), m = Math.floor(s/60);
-                return (m<10?'0':'')+m+':'+(s%60<10?'0':'')+(s%60);
-            }
-            function mkBar(pct, color) {
-                var w = Math.min(pct||0, 100).toFixed(1);
-                return '<div style="flex:1;height:7px;background:rgba(255,255,255,0.09);border-radius:4px;overflow:hidden">'
-                     + '<div style="width:'+w+'%;height:100%;background:'+color+';border-radius:4px"></div></div>';
-            }
-
-            var now    = new Date();
-            var nowStr = (now.getHours()<10?'0':'')+now.getHours()+':'
-                       + (now.getMinutes()<10?'0':'')+now.getMinutes()+':'
-                       + (now.getSeconds()<10?'0':'')+now.getSeconds();
-
-            var K = 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px;text-align:center;';
-            bodyHtml += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:22px">';
-            bodyHtml += '<div style="'+K+'"><div style="font-size:1.5rem;font-weight:800;color:#f9fafb">'+localFmtMmSs(totalMs)+'</div><div style="font-size:.7rem;color:#6b7280;margin-top:4px">총 기록 시간</div></div>';
-            bodyHtml += '<div style="'+K+'"><div style="font-size:1.5rem;font-weight:800;color:#f9fafb">'+totalFrames.toLocaleString()+'</div><div style="font-size:.7rem;color:#6b7280;margin-top:4px">총 프레임</div></div>';
-            bodyHtml += '<div style="'+K+'"><div style="font-size:1.5rem;font-weight:800;color:'+trackColor+'">'+trackRate+'%</div><div style="font-size:.7rem;color:#6b7280;margin-top:4px">유효 추적률</div></div>';
-            bodyHtml += '</div>';
-
-            var SEC = 'font-size:.72rem;font-weight:700;letter-spacing:.08em;color:#6b7280;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.07)';
-            bodyHtml += '<div style="'+SEC+'">문제별 체류 시간</div>';
-            var qNames = ['문제 1','문제 2','문제 3'];
-            for (var qi2 = 0; qi2 < 3; qi2++) {
-                bodyHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
-                          + '<span style="width:60px;font-size:.82rem;color:#d1d5db;flex-shrink:0">'+qNames[qi2]+'</span>'
-                          + mkBar(qTime[qi2]/qMax*100, 'linear-gradient(90deg,#fbbf24,#f59e0b)')
-                          + '<span style="width:58px;text-align:right;font-size:.82rem;color:#f9fafb;font-weight:600;flex-shrink:0">'+localFmtMs(qTime[qi2])+'</span>'
-                          + '</div>';
-            }
-
-            bodyHtml += '<div style="'+SEC+';margin-top:18px">AOI 집중 응시 시간 (녹색테두리 ON 누적)</div>';
-            var aoiIds   = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
-            var aoiNames = {'para-0':'지문 문단1','para-1':'지문 문단2','para-2':'지문 문단3','para-3':'지문 문단4','q-1':'문제1 선지','q-2':'문제2 선지','q-3':'문제3 선지'};
-            var aoiMaxVal = 1;
-            for (var a = 0; a < aoiIds.length; a++) { if ((aoiTime[aoiIds[a]]||0) > aoiMaxVal) aoiMaxVal = aoiTime[aoiIds[a]]; }
-            for (var a2 = 0; a2 < aoiIds.length; a2++) {
-                var aid = aoiIds[a2], ams = aoiTime[aid]||0;
-                var acolor = aid.indexOf('para-') === 0 ? 'linear-gradient(90deg,#34d399,#10b981)' : 'linear-gradient(90deg,#60a5fa,#3b82f6)';
-                bodyHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
-                          + '<span style="width:78px;font-size:.82rem;color:#d1d5db;flex-shrink:0">'+aoiNames[aid]+'</span>'
-                          + mkBar(ams/aoiMaxVal*100, acolor)
-                          + '<span style="width:58px;text-align:right;font-size:.82rem;color:'+(ams>0?'#f9fafb':'#4b5563')+';font-weight:600;flex-shrink:0">'+(ams>0?localFmtMs(ams):'—')+'</span>'
-                          + '</div>';
-            }
-            bodyHtml += '<div style="text-align:right;font-size:.7rem;color:#4b5563;margin-top:14px">📅 조회: '+nowStr+' | '+snap.length.toLocaleString()+'프레임</div>';
-        }
-
-        // 모달 동적 생성 (HTML/CSS 완전 독립, z-index:99999)
-        var overlay = document.createElement('div');
-        overlay.id = '_statsOverlay';
-        overlay.setAttribute('style',
-            'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.78);'
-          + 'display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box');
-        overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
-
-        var card = document.createElement('div');
-        card.setAttribute('style',
-            'background:#12121e;border:1px solid rgba(251,191,36,0.4);border-radius:16px;'
-          + 'max-width:640px;width:100%;max-height:82vh;overflow-y:auto;padding:24px;'
-          + 'color:#f9fafb;font-family:inherit;box-sizing:border-box;'
-          + 'box-shadow:0 24px 64px rgba(0,0,0,0.85)');
-        card.innerHTML =
-            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
-          + '<h2 style="margin:0;font-size:1.1rem;font-weight:700;color:#fbbf24">📊 누적 시선 통계</h2>'
-          + '<button id="_statsClose" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#9ca3af;border-radius:8px;width:32px;height:32px;font-size:1rem;cursor:pointer">✕</button>'
-          + '</div>' + bodyHtml;
-
-        overlay.appendChild(card);
-        document.body.appendChild(overlay);
-
-        document.getElementById('_statsClose').addEventListener('click', function(){ overlay.remove(); });
-
-        logI('stats', 'modal shown frames=' + snap.length);
-    } catch(err) {
-        alert('[통계 오류] ' + err.message);
+    // ── 점 그리기 ──
+    var drawn = 0;
+    for (var i = 0; i < snap.length; i++) {
+        var f = snap[i];
+        if (f.x == null || f.y == null) continue;
+        if (f.s > 1) continue;   // state 2+ 무효 제외
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, 3, 0, 6.2832);
+        ctx.fillStyle = Q_COLOR[f.qIdx] || 'rgba(156,163,175,0.45)';
+        ctx.fill();
+        drawn++;
     }
+
+    overlay.appendChild(canvas);
+
+    // ── 닫기 버튼 ──
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕ 닫기';
+    closeBtn.setAttribute('style',
+        'position:absolute;top:14px;right:14px;pointer-events:auto;'
+      + 'background:rgba(18,18,30,0.92);border:1px solid rgba(255,255,255,0.25);'
+      + 'color:#f9fafb;border-radius:8px;padding:6px 14px;font-size:13px;'
+      + 'cursor:pointer;font-family:inherit;z-index:9001');
+    closeBtn.addEventListener('click', function () { overlay.remove(); });
+    overlay.appendChild(closeBtn);
+
+    // ── 정보 배지 (왼쪽 상단) ──
+    var info = document.createElement('div');
+    info.setAttribute('style',
+        'position:absolute;top:14px;left:14px;pointer-events:none;'
+      + 'background:rgba(18,18,30,0.88);border:1px solid rgba(255,255,255,0.12);'
+      + 'color:#d1d5db;border-radius:8px;padding:8px 14px;font-size:12px;'
+      + 'font-family:inherit;line-height:1.6');
+    info.innerHTML = '<strong style="color:#fbbf24">👁 누적 시선 포인트</strong><br>'
+                   + '유효 ' + drawn.toLocaleString() + '개 / 전체 '
+                   + snap.length.toLocaleString() + '프레임';
+    overlay.appendChild(info);
+
+    // ── 범례 (오른쪽 하단) ──
+    var legend = document.createElement('div');
+    legend.setAttribute('style',
+        'position:absolute;bottom:14px;right:14px;pointer-events:none;'
+      + 'background:rgba(18,18,30,0.88);border:1px solid rgba(255,255,255,0.12);'
+      + 'color:#d1d5db;border-radius:8px;padding:10px 14px;font-size:12px;'
+      + 'font-family:inherit;line-height:2');
+    var legendHtml = '';
+    ['문제 1', '문제 2', '문제 3'].forEach(function (label, idx) {
+        legendHtml += '<div>'
+            + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+            + 'background:' + Q_SOLID[idx] + ';margin-right:6px;vertical-align:middle"></span>'
+            + label + '</div>';
+    });
+    legend.innerHTML = legendHtml;
+    overlay.appendChild(legend);
+
+    document.body.appendChild(overlay);
+    logI('stats', 'gaze overlay: ' + drawn + ' pts drawn');
 }
 
 function closeGazeStats() {
-    var el = document.getElementById('_statsOverlay');
+    var el = document.getElementById('_gazeOverlay');
     if (el) el.remove();
 }
-
-
