@@ -216,8 +216,16 @@ function resizeCanvas() {
 }
 
 function renderGaze() {
-    // 리플레이 중에는 gazeCanvas 그리기 중단 (replayDot이 대신 표시)
-    if (_replayActive) return;
+    // 리플레이 중에는 gazeCanvas 그리기만 중단 — clearRect는 실행 (frozen dot 제거)
+    if (_replayActive) {
+        const c = els.canvas;
+        if (c) {
+            const ctx = c.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            ctx.clearRect(0, 0, c.width / dpr, c.height / dpr);
+        }
+        return;
+    }
     const now = performance.now();
     if (now - _lastRenderMs < CONFIG.RENDER_INTERVAL_MS) return;
     _lastRenderMs = now;
@@ -1195,7 +1203,9 @@ function startReplay() {
     bar.appendChild(totalLabel);
     document.body.appendChild(bar);
 
-    let replayIdx = 0;
+    let replayIdx  = 0;
+    let lastDotX    = null;   // 마지막으로 유효했던 x 좌표 (tracking 유실 시 유지)
+    let lastDotY    = null;
     const wallStart = Date.now();
 
     setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs / 1000)}초)...`);
@@ -1214,13 +1224,17 @@ function startReplay() {
         const frame = snap[Math.max(0, replayIdx - 1)];
 
         // 시선 닷 위치 갱신
+        // typeof 검사: frame.x가 undefined일 때 loose equality(!=null)가 false가 되는 버그 방지
         if (dot) {
-            // s===0(SUCCESS) + s===1(LOW_CONF) 모두 dot 표시
-            // (기록 시 LOW_CONF도 포함하므로 재생 시도 동일하게)
-            if (frame.x != null && frame.s <= 1) {
+            if (typeof frame.x === 'number' && typeof frame.y === 'number' && frame.s <= 1) {
+                lastDotX = frame.x;
+                lastDotY = frame.y;
+            }
+            // tracking 일시 유실 시 마지막 유효 좌표 유지 (dot 깜빡임 방지)
+            if (lastDotX !== null) {
                 dot.style.display = 'block';
-                dot.style.left    = `${frame.x}px`;
-                dot.style.top     = `${frame.y}px`;
+                dot.style.left    = `${lastDotX}px`;
+                dot.style.top     = `${lastDotY}px`;
             } else {
                 dot.style.display = 'none';
             }
