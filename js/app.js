@@ -1239,12 +1239,23 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     const BODY_H = window.innerHeight - HDR_H - FTR_H;
     const BODY_W = window.innerWidth;
 
-    // 지문 60% / 문제 40%, 폰트: 지문=원본의 1/2, 문제=원본 동일
-    const pWrapW  = Math.floor(BODY_W * 0.60);
-    const qWrapW  = BODY_W - pWrapW - 1;
-    const Sp      = 1.0;   // 폰트 원본과 동일 (scale 없음), 가로폭은 pWrapW로 확장
-    const Sq      = 1.0;   // 문제: 14px × 1.0 = 14px (원본)
-    const numQ    = Math.max(1, _TOTAL_QUESTIONS || 3);
+    // 지문 60% / 문제 40%
+    const pWrapW = Math.floor(BODY_W * 0.60);
+    const qWrapW = BODY_W - pWrapW - 1;
+    const numQ   = Math.max(1, _TOTAL_QUESTIONS || 3);
+
+    // Sp: 지문 전체가 높이+너비 안에 꼭 맞는 최대 스케일 → 스크롤 불필요, 텍스트 최대 크기
+    const Sp = Math.min(
+        BODY_H / Math.max(pInfo.scrollH, 1),
+        pWrapW  / Math.max(pInfo.w, 1)
+    );
+
+    // Sq: 문제 1개가 높이+너비 안에 꼭 맞는 최대 스케일
+    const Sq = Math.min(
+        BODY_H / Math.max(qInfo.scrollH / numQ, 1),
+        qWrapW  / Math.max(qInfo.w, 1)
+    );
+
     const TOTAL_W = pWrapW + 1 + qWrapW;
     const leftOff = 0;
 
@@ -1317,8 +1328,8 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
 // isQuestion=true: inner에 _rplQInner 클래스 부여 + visibility 관리
 function _buildMinimap(sourceEl, S, wrapW, wrapH, showAllBlocks, isQuestion) {
     const wrap = _el('div', '', `width:${wrapW}px;height:${wrapH}px;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.012)`);
-    // width = wrapW: 원본보다 넓은 컴테이너에서 텍스트 리플로우 → 폰트 크기 유지, 가로폭만 확장
-    const inner = _el('div', '', `width:${wrapW}px;position:absolute;top:0;left:0;pointer-events:none;overflow:hidden`);
+    // transform:scale(S): 원본 크기 그대로 두고 균일하게 축소 → wrap 안에 꼭 맞음, 스크롤 불필요
+    const inner = _el('div', '', `width:${sourceEl.scrollWidth}px;height:${sourceEl.scrollHeight}px;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none`);
     if (isQuestion) inner.classList.add('_rplQInner');
     inner.innerHTML = sourceEl.innerHTML;
     // 클론 콘텐츠내 스크롤바 강제 제거
