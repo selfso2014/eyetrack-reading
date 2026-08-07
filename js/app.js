@@ -952,30 +952,19 @@ function showQuestion(qIdx) {
     // 현재 문제 AOI만 포함하도록 목록 갱신
     buildAOIList();
 
-    // ── 선지 클릭 → 정답 피드백 ──
+    // ── 선지 클릭 → 선택 표시 (변경 가능, 정답 피드백 없음) ──
     const currentBlock = blocks[qIdx];
     if (!currentBlock) return;
     const choiceList = currentBlock.querySelector('.choice-list');
-    if (!choiceList || choiceList.classList.contains('answered')) return;
+    if (!choiceList) return;
 
-    const answerNum  = parseInt(currentBlock.dataset.answer, 10); // 1~5
-    const choiceLis  = Array.from(choiceList.querySelectorAll('li'));
-
-    choiceLis.forEach((li, idx) => {
-        li.addEventListener('click', function onChoiceClick() {
-            if (choiceList.classList.contains('answered')) return;
-            choiceList.classList.add('answered');
-
-            const selectedNum = idx + 1;
-            if (selectedNum === answerNum) {
-                li.classList.add('correct');  // 정답 선택
-            } else {
-                li.classList.add('wrong');    // 오답 선택
-                // 정답 공개
-                const correctLi = choiceList.querySelector('[data-correct]');
-                if (correctLi) correctLi.classList.add('reveal');
-            }
-        }, { once: true });
+    const choiceLis = Array.from(choiceList.querySelectorAll('li'));
+    choiceLis.forEach(li => {
+        li.onclick = () => {
+            // 기존 선택 해제 후 클릭한 선지 선택
+            choiceLis.forEach(el => el.classList.remove('selected'));
+            li.classList.add('selected');
+        };
     });
 }
 
