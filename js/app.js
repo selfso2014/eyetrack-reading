@@ -1621,6 +1621,7 @@ function classifyRegressions(fixations, passageRect, questRect) {
             regressions.push({
                 from:  { x: cx_i, y: cy_i },
                 to:    { x: cx_j, y: cy_j },
+                toIdx: i + 1,   // 리그레션 착지 픽세이션 인덱스
                 type:  type,
                 panel: panel,
             });
@@ -1774,21 +1775,31 @@ function showGazeStats() {
 
     // ── 픽세이션 원 그리기 ──
     // 원시 점 위에 레이어로 덮어 그림 (더 눈에 띄게)
-    var fixations = computeFixations(snap);
+    var fixations   = computeFixations(snap);
+    var regressions = classifyRegressions(fixations, passageRect, questRect);
 
-    // 문단별 픽세이션 fill / stroke (PARA_RGBA 보다 조금 진하게)
+    // 리그레션 착지 픽세이션 인덱스 집합 구성
+    var regTargetSet = {};
+    for (var ri = 0; ri < regressions.length; ri++) {
+        regTargetSet[regressions[ri].toIdx] = true;
+    }
+
+    // 문단별 픽세이션 fill (리그레션은 붉은 테두리, 순방향은 단락색 테두리)
     var FIX_PARA_FILL   = ['rgba(52,211,153,0.45)','rgba(251,191,36,0.45)','rgba(96,165,250,0.45)','rgba(244,114,182,0.45)'];
     var FIX_PARA_STROKE = ['rgba(52,211,153,0.95)','rgba(251,191,36,0.95)','rgba(96,165,250,0.95)','rgba(244,114,182,0.95)'];
     var FIX_Q_FILL      = ['rgba(52,211,153,0.45)','rgba(251,191,36,0.45)','rgba(96,165,250,0.45)'];
     var FIX_Q_STROKE    = ['rgba(52,211,153,0.95)','rgba(251,191,36,0.95)','rgba(96,165,250,0.95)'];
     var FIX_DFLT_FILL   = 'rgba(156,163,175,0.35)';
     var FIX_DFLT_STROKE = 'rgba(156,163,175,0.80)';
+    var REG_STROKE      = 'rgba(239,68,68,0.95)';   // 리그레션 붉은 테두리
+    var REG_LINE_W      = 2.5;                       // 리그레션 테두리 두께 (일반 1.5보다 굵게)
 
     for (var fi = 0; fi < fixations.length; fi++) {
-        var fx = fixations[fi];
+        var fx      = fixations[fi];
+        var isReg   = !!regTargetSet[fi];   // 이 픽세이션이 리그레션 착지점인가
         // 반지름: duration 에 정비례, 500ms = 15px
         var fRadius = Math.min(fx.duration, 500) / 500 * 15;
-        if (fRadius < 3) fRadius = 3;   // 최소 3px
+        if (fRadius < 3) fRadius = 3;
 
         if (fx.x >= passageRect.left && fx.x <= passageRect.right &&
             fx.y >= passageRect.top  && fx.y <= passageRect.bottom) {
@@ -1796,13 +1807,14 @@ function showGazeStats() {
             var fcx = fx.x - passageRect.left;
             var fcy = fx.y - passageRect.top + fx.scrl;
 
-            // 어느 문단인지 판별해 색상 선택
+            // 순방향 픽세이션: 단락별 색상 / 리그레션: fill은 같되 테두리만 붉게
             var fFill   = FIX_DFLT_FILL;
-            var fStroke = FIX_DFLT_STROKE;
+            var fStroke = isReg ? REG_STROKE : FIX_DFLT_STROKE;
+            var fLineW  = isReg ? REG_LINE_W : 1.5;
             for (var fpi = 0; fpi < paraRanges.length; fpi++) {
                 if (fcy >= paraRanges[fpi].top && fcy <= paraRanges[fpi].bottom) {
-                    fFill   = FIX_PARA_FILL  [paraRanges[fpi].idx] || FIX_DFLT_FILL;
-                    fStroke = FIX_PARA_STROKE[paraRanges[fpi].idx] || FIX_DFLT_STROKE;
+                    fFill = FIX_PARA_FILL[paraRanges[fpi].idx] || FIX_DFLT_FILL;
+                    if (!isReg) fStroke = FIX_PARA_STROKE[paraRanges[fpi].idx] || FIX_DFLT_STROKE;
                     break;
                 }
             }
@@ -1811,46 +1823,27 @@ function showGazeStats() {
             pCtx.fillStyle   = fFill;
             pCtx.fill();
             pCtx.strokeStyle = fStroke;
-            pCtx.lineWidth   = 1.5;
+            pCtx.lineWidth   = fLineW;
             pCtx.stroke();
 
         } else if (fx.x >= questRect.left && fx.x <= questRect.right &&
                    fx.y >= questRect.top  && fx.y <= questRect.bottom) {
 
-            var fqx = fx.x - questRect.left;
-            var fqy = fx.y - questRect.top + fx.qscrl;
-            var qfi = fx.qIdx;
+            var fqx    = fx.x - questRect.left;
+            var fqy    = fx.y - questRect.top + fx.qscrl;
+            var qfi    = fx.qIdx;
+            var qStroke = isReg ? REG_STROKE : (FIX_Q_STROKE[qfi] || FIX_DFLT_STROKE);
+            var qLineW  = isReg ? REG_LINE_W : 1.5;
             qCtx.beginPath();
             qCtx.arc(fqx, fqy, fRadius, 0, 6.2832);
-            qCtx.fillStyle   = FIX_Q_FILL  [qfi] || FIX_DFLT_FILL;
+            qCtx.fillStyle   = FIX_Q_FILL[qfi] || FIX_DFLT_FILL;
             qCtx.fill();
-            qCtx.strokeStyle = FIX_Q_STROKE[qfi] || FIX_DFLT_STROKE;
-            qCtx.lineWidth   = 1.5;
+            qCtx.strokeStyle = qStroke;
+            qCtx.lineWidth   = qLineW;
             qCtx.stroke();
         }
     }
-    logI('stats', 'fixations=' + fixations.length + ' p=' + pDrawn + ' q=' + qDrawn);
-
-    // ── 리그레션 화살표 그리기 ──
-    // 유형별 색상: 1=주황, 2=빨강, 3=보라, 4=진빨강, 5=노랑
-    var REG_COLOR = {
-        1: 'rgba(251,146,60,0.85)',   // 동일 줄 역방향
-        2: 'rgba(248,113,113,0.85)',  // 이전 줄 역행
-        3: 'rgba(167,139,250,0.85)', // 리턴 스윕 실패
-        4: 'rgba(220,38,38,0.95)',   // 대규모 역행
-        5: 'rgba(253,224,71,0.80)',  // 단어 내 미시 역행
-    };
-    var regressions = classifyRegressions(fixations, passageRect, questRect);
-    for (var ri = 0; ri < regressions.length; ri++) {
-        var rg   = regressions[ri];
-        var rCol = REG_COLOR[rg.type] || 'rgba(255,255,255,0.6)';
-        if (rg.panel === 'passage') {
-            drawArrow(pCtx, rg.from.x, rg.from.y, rg.to.x, rg.to.y, rCol, 1.5);
-        } else {
-            drawArrow(qCtx, rg.from.x, rg.from.y, rg.to.x, rg.to.y, rCol, 1.5);
-        }
-    }
-    logI('stats', 'regressions=' + regressions.length);
+    logI('stats', 'fixations=' + fixations.length + ' regressions=' + regressions.length + ' p=' + pDrawn + ' q=' + qDrawn);
 
     // ── UI 오버레이 (닫기·정보·범례) ──
 
