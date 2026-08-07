@@ -918,3 +918,57 @@ body {
   text-align: right;
   margin-top: 14px;
 }
+
+/* ─── 시선그래프 버튼 ─── */
+.graph-btn {
+  background: linear-gradient(135deg,rgba(251,191,36,.15),rgba(245,158,11,.1)) !important;
+  border-color: rgba(251,191,36,.45) !important;
+  color: #fbbf24 !important;
+}
+.graph-btn:hover {
+  background: linear-gradient(135deg,rgba(251,191,36,.28),rgba(245,158,11,.2)) !important;
+  border-color: rgba(251,191,36,.8) !important;
+}
+.graph-btn:disabled { opacity:.35 !important; cursor:not-allowed !important; }
+
+/* ─── 공통 모달 오버레이 ─── */
+.gaze-modal-overlay {
+  position: fixed; inset: 0; z-index: 8000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.75);
+  backdrop-filter: blur(4px);
+}
+.gaze-modal-overlay.hidden { display: none; }
+
+.gaze-modal-box {
+  background: #0f1128;
+  border: 1px solid rgba(108,123,255,.3);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.7);
+  width: 90vw;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gaze-modal-hdr {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+  font: 700 14px/1 Inter,sans-serif;
+  color: #e8ecf4;
+  letter-spacing: .03em;
+  flex-shrink: 0;
+}
+
+.gaze-modal-close {
+  padding: 4px 12px;
+  font: 600 11px Inter,sans-serif;
+  border-radius: 20px;
+  border: 1.5px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.06);
+  color: #94a3b8;
+  cursor: pointer;
+}
+.gaze-modal-close:hover { background: rgba(239,68,68,.2); color: #fca5a5; }
