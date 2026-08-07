@@ -1239,20 +1239,15 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     const BODY_H = window.innerHeight - HDR_H - FTR_H;
     const BODY_W = window.innerWidth;
 
-    // ── 핵심: 가로폭 기준 스케일 → 콘텐츠가 래퍼를 꼭 채우므로 지문―문제 바로 인접 ──
-    // 지문: 화면 40%폭 기준 → 문제보다 작은 폰트 (나머지 60%가 문제 영역)
-    const pTargetW = Math.floor(BODY_W * 0.40);
-    const Sp       = Math.min(pTargetW / Math.max(pInfo.w, 1), 3.0);
-    const pWrapW   = Math.ceil(pInfo.w * Sp);   // 콘텐츠 너비 = 래퍼 너비 (빈 공간 제로)
+    // 지문 60% / 문제 40%, 폰트: 지문=원본의 1/2, 문제=원본 동일
+    const pWrapW  = Math.floor(BODY_W * 0.60);
+    const qWrapW  = BODY_W - pWrapW - 1;
+    const Sp      = 0.5;   // 지문: 14.5px × 0.5 = 7.25px
+    const Sq      = 1.0;   // 문제: 14px × 1.0 = 14px (원본)
+    const numQ    = Math.max(1, _TOTAL_QUESTIONS || 3);
+    const TOTAL_W = pWrapW + 1 + qWrapW;
+    const leftOff = 0;
 
-    // 문제: 나머지 가로폭을 1개 문제 기준으로 콘텐츠가 꼭 채우는 스케일 (더 큰 폰트)
-    const numQ     = Math.max(1, _TOTAL_QUESTIONS || 3);
-    const qTargetW = BODY_W - pWrapW - 1;
-    const Sq       = Math.min(qTargetW / Math.max(qInfo.w, 1), 3.0);
-    const qWrapW   = Math.ceil(qInfo.w * Sq);   // 콘텐츠 너비 = 래퍼 너비 (빈 공간 제로)
-
-    const TOTAL_W  = pWrapW + 1 + qWrapW;
-    const leftOff  = Math.max(0, Math.floor((BODY_W - TOTAL_W) / 2));
 
     const ovl = _el('div', '', 'position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;background:#07091a;overflow:hidden;font-family:Inter,sans-serif');
     ovl.id = '_rplOvl';
@@ -1322,14 +1317,19 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
 // isQuestion=true: inner에 _rplQInner 클래스 부여 + visibility 관리
 function _buildMinimap(sourceEl, S, wrapW, wrapH, showAllBlocks, isQuestion) {
     const wrap = _el('div', '', `width:${wrapW}px;height:${wrapH}px;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.012)`);
-    const inner = _el('div', '', `width:${sourceEl.scrollWidth}px;height:${sourceEl.scrollHeight}px;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;overflow:visible;pointer-events:none`);
+    const inner = _el('div', '', `width:${sourceEl.scrollWidth}px;height:${sourceEl.scrollHeight}px;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none;overflow:hidden`);
     if (isQuestion) inner.classList.add('_rplQInner');
     inner.innerHTML = sourceEl.innerHTML;
+    // 클론 콘텐츠내 스크롤바 강제 제거
+    inner.querySelectorAll('*').forEach(el => {
+        el.style.overflow   = 'hidden';
+        el.style.overflowY  = 'hidden';
+        el.style.overflowX  = 'hidden';
+    });
     inner.querySelectorAll('.panel-header').forEach(el => { el.style.position = 'relative'; });
     if (showAllBlocks) {
         inner.querySelectorAll('.question-block').forEach((el, i) => {
-            el.style.display = 'block';
-            // 초기: 첫 번째 문제만 표시, 나머지 숨김 (step()이 동기화)
+            el.style.display    = 'block';
             el.style.visibility = (i === 0) ? 'visible' : 'hidden';
         });
     }
