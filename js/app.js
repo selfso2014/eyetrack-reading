@@ -1240,12 +1240,12 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     const BODY_W = window.innerWidth;
 
     // ── 핵심: 가로폭 기준 스케일 → 콘텐츠가 래퍼를 꼭 채우므로 지문―문제 바로 인접 ──
-    // 지문: 화면 60%폭으로 콘텐츠가 가로를 꼭 채우는 스케일 (높이 초과는 overflow:hidden 클립)
-    const pTargetW = Math.floor(BODY_W * 0.60);
+    // 지문: 화면 40%폭 기준 → 문제보다 작은 폰트 (나머지 60%가 문제 영역)
+    const pTargetW = Math.floor(BODY_W * 0.40);
     const Sp       = Math.min(pTargetW / Math.max(pInfo.w, 1), 3.0);
     const pWrapW   = Math.ceil(pInfo.w * Sp);   // 콘텐츠 너비 = 래퍼 너비 (빈 공간 제로)
 
-    // 문제: 나머지 가로폭을 1개 문제 기준으로 콘텐츠가 꼭 채우는 스케일
+    // 문제: 나머지 가로폭을 1개 문제 기준으로 콘텐츠가 꼭 채우는 스케일 (더 큰 폰트)
     const numQ     = Math.max(1, _TOTAL_QUESTIONS || 3);
     const qTargetW = BODY_W - pWrapW - 1;
     const Sq       = Math.min(qTargetW / Math.max(qInfo.w, 1), 3.0);
