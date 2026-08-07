@@ -1845,6 +1845,13 @@ function computeEfficiency(transitions, numQ) {
 // §14-F-2. 모달 제어 + Gemini AI 호출
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function resetApiKey() {
+    localStorage.removeItem('gemini_api_key');
+    closeGazeGraph();
+    // 잠시 후 다시 showGazeGraph 호출 → API Key 모달 표시
+    setTimeout(showGazeGraph, 150);
+}
+
 function closeGazeGraph() {
     document.getElementById('gazeGraphModal')?.classList.add('hidden');
 }
