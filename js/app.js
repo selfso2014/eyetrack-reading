@@ -1488,3 +1488,162 @@ if (els.btnStart) {
 }
 
 logI('app', 'App loaded. Waiting for user to press Start.');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §16. 누적 시선 통계 모달
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** ms → "X.Xs" or "Xms" */
+function _fmtMs(ms) {
+    if (ms == null || isNaN(ms)) return '—';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    return `${(ms / 1000).toFixed(1)}초`;
+}
+
+/** ms → "MM:SS" */
+function _fmtMmSs(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+}
+
+/** 진행바 HTML */
+function _barHtml(pct, colorClass) {
+    const cls = colorClass ? `stats-bar-fill ${colorClass}` : 'stats-bar-fill';
+    return `<div class="stats-bar-bg"><div class="${cls}" style="width:${Math.min(pct,100).toFixed(1)}%"></div></div>`;
+}
+
+function showGazeStats() {
+    const modal = document.getElementById('gazeStatsModal');
+    const content = document.getElementById('statsContent');
+    if (!modal || !content) return;
+
+    // ── 버튼 클릭 시점의 스냅샷 ──
+    const snap = [..._gazeLog];
+    if (snap.length < 2) {
+        content.innerHTML = '<p style="color:#6b7280;text-align:center;padding:32px 0;">아직 시선 데이터가 없습니다.<br>Eye tracking 시작 후 다시 확인하세요.</p>';
+        modal.classList.remove('hidden');
+        return;
+    }
+
+    const totalMs     = snap[snap.length - 1].t;
+    const totalFrames = snap.length;
+    const okFrames    = snap.filter(f => f.s === 0).length;
+    const trackRate   = Math.round(okFrames / totalFrames * 100);
+
+    // ── 문제별 체류 시간 (qIdx 기반) ──
+    const qLabels = ['문제 1', '문제 2', '문제 3'];
+    const qTime   = [0, 0, 0];
+    for (let i = 0; i < snap.length - 1; i++) {
+        const dt  = snap[i + 1].t - snap[i].t;
+        const idx = snap[i].qIdx;
+        if (idx >= 0 && idx < qTime.length) qTime[idx] += dt;
+    }
+    const qMax = Math.max(...qTime, 1);
+
+    // ── AOI별 녹색테두리 지속 시간 ──
+    // 각 프레임의 aois 배열에 id가 있으면 → 그 프레임 간격만큼 해당 AOI에 누적
+    const aoiTime = {};
+    for (let i = 0; i < snap.length - 1; i++) {
+        const dt = snap[i + 1].t - snap[i].t;
+        (snap[i].aois || []).forEach(id => {
+            aoiTime[id] = (aoiTime[id] || 0) + dt;
+        });
+    }
+    // 정렬: para-0~3 먼저, 그 다음 q-1~3
+    const aoiOrder  = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
+    const aoiLabels = {
+        'para-0': '지문 문단 1', 'para-1': '지문 문단 2',
+        'para-2': '지문 문단 3', 'para-3': '지문 문단 4',
+        'q-1': '문제 1 선지', 'q-2': '문제 2 선지', 'q-3': '문제 3 선지',
+    };
+    const aoiMax = Math.max(...aoiOrder.map(id => aoiTime[id] || 0), 1);
+
+    // ── AOI 색상: para=green, q=blue ──
+    const aoiColor = id => id.startsWith('para-') ? '' : 'blue';
+
+    // ── 렌더 ──
+    const now = new Date();
+    const nowStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+
+    content.innerHTML = `
+      <!-- 전체 요약 KPI -->
+      <div class="stats-section">
+        <div class="stats-section-title">전체 요약</div>
+        <div class="stats-summary-grid">
+          <div class="stats-kpi">
+            <div class="stats-kpi-val">${_fmtMmSs(totalMs)}</div>
+            <div class="stats-kpi-label">총 기록 시간</div>
+          </div>
+          <div class="stats-kpi">
+            <div class="stats-kpi-val">${totalFrames.toLocaleString()}</div>
+            <div class="stats-kpi-label">총 프레임 수</div>
+          </div>
+          <div class="stats-kpi">
+            <div class="stats-kpi-val" style="color:${trackRate>=70?'#34d399':trackRate>=40?'#fbbf24':'#f87171'}">${trackRate}%</div>
+            <div class="stats-kpi-label">유효 추적률 (State=OK)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 문제별 체류 시간 -->
+      <div class="stats-section">
+        <div class="stats-section-title">문제별 체류 시간</div>
+        <table class="stats-table">
+          <thead><tr><th>문제</th><th>비율</th><th>시간</th></tr></thead>
+          <tbody>
+            ${qLabels.map((label, i) => `
+              <tr>
+                <td>${label}</td>
+                <td><div class="stats-bar-wrap">${_barHtml(qTime[i] / qMax * 100, 'yellow')}</div></td>
+                <td>${_fmtMs(qTime[i])}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- AOI별 녹색테두리 지속 시간 -->
+      <div class="stats-section">
+        <div class="stats-section-title">AOI 집중 응시 시간 (녹색테두리 ON 누적)</div>
+        <table class="stats-table">
+          <thead><tr><th>영역</th><th>비율</th><th>시간</th></tr></thead>
+          <tbody>
+            ${aoiOrder.map(id => {
+                const ms  = aoiTime[id] || 0;
+                const pct = ms / aoiMax * 100;
+                return `<tr>
+                  <td>${aoiLabels[id] || id}</td>
+                  <td><div class="stats-bar-wrap">${_barHtml(pct, aoiColor(id))}</div></td>
+                  <td>${ms > 0 ? _fmtMs(ms) : '<span style="color:#4b5563">—</span>'}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stats-timestamp">📅 조회 시각: ${nowStr} &nbsp;|&nbsp; 스냅샷 ${snap.length.toLocaleString()}프레임</div>
+    `;
+
+    modal.classList.remove('hidden');
+    logI('stats', `통계 모달 열림: ${snap.length}프레임, 총 ${_fmtMmSs(totalMs)}`);
+}
+
+function closeGazeStats() {
+    const modal = document.getElementById('gazeStatsModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// 버튼 이벤트 연결
+document.addEventListener('DOMContentLoaded', () => {
+    const btnStats = document.getElementById('btnViewStats');
+    if (btnStats) btnStats.addEventListener('click', showGazeStats);
+
+    const btnClose = document.getElementById('btnCloseStats');
+    if (btnClose) btnClose.addEventListener('click', closeGazeStats);
+
+    // 오버레이 바깥 클릭으로 닫기
+    const modal = document.getElementById('gazeStatsModal');
+    if (modal) modal.addEventListener('click', e => {
+        if (e.target === modal) closeGazeStats();
+    });
+});

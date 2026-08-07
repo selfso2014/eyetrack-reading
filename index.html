@@ -82,6 +82,7 @@
         <button id="btnToggleAOI"   class="toggle-btn is-on"  title="관심영역 테두리 표시/숨기기">🟩 영역</button>
         <button id="btnToggleTimer" class="toggle-btn is-off" title="타이머 표시/숨기기">⏱ 타이머</button>
         <button id="btnReplay"      class="toggle-btn replay-btn" title="시선 리플레이" disabled>▶ 리플레이</button>
+        <button id="btnViewStats"   class="toggle-btn stats-btn" title="누적 시선 통계 보기">📊 통계</button>
         <button id="btnToggleDebug" class="toggle-btn is-on"  title="AOI 디버그 HUD 표시/숨기기">🐛 DBG</button>
       </div>
     </div>
@@ -189,6 +190,17 @@
 
     </div><!-- /#readingPanels -->
   </div><!-- /#readingLayout -->
+
+  <!-- ═══ Gaze Stats Modal ═══ -->
+  <div id="gazeStatsModal" class="stats-modal hidden">
+    <div class="stats-card">
+      <div class="stats-header">
+        <h2>📊 누적 시선 통계</h2>
+        <button id="btnCloseStats" class="stats-close" title="닫기">✕</button>
+      </div>
+      <div id="statsContent" class="stats-content"><!-- JS가 채움 --></div>
+    </div>
+  </div>
 
   <!-- Replay gaze dot -->
   <div id="replayDot"></div>
