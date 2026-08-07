@@ -496,6 +496,11 @@ let _aoiDebugVisible = true;       // 독해 모드 진입 시 자동 표시
 // ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
 
+// ── 리플레이 상태 ──
+let _replayActive = false;
+let _replayRAF    = null;
+
+
 
 
 async function initSDK() {
@@ -882,7 +887,7 @@ function showReadingLayout() {
         btnTimer.classList.add('is-on');
         btnTimer.classList.remove('is-off');
     }
-    if (btnReplay) btnReplay.disabled = true;  // 리플레이 미구현
+    if (btnReplay) { btnReplay.disabled = false; btnReplay.onclick = startReplay; }
     if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
 
     // 문제 내비게이션 버튼 연결
@@ -1116,6 +1121,315 @@ function toggleTimer() {
     logI('reading', `타이머: ${_timerVisible ? 'ON' : 'OFF'}`);
 }
 
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-E. 시선 리플레이 v2 (문단 사각형 + 문제 텍스트)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function fmtMs(ms) {
+    const s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function _el(tag, text, style) {
+    const e = document.createElement(tag);
+    if (text)  e.textContent = text;
+    if (style) e.style.cssText = style;
+    return e;
+}
+
+function startReplay() {
+    if (_gazeLog.length === 0) { logW('replay', '기록된 시선 데이터 없음'); return; }
+    if (_replayActive) { stopReplay(); return; }
+
+    const snap    = _gazeLog.slice();
+    const totalMs = snap[snap.length - 1].t;
+
+    // ── 원본 DOM 측정 ──
+    const passageEl  = document.getElementById('passagePanel');
+    const questionEl = document.getElementById('questionViewport');
+    if (!passageEl || !questionEl) return;
+
+    // question-block 모두 표시해서 innerHTML 수집 후 복원
+    const qBlocks  = Array.from(document.querySelectorAll('.question-block'));
+    const savedDsp = qBlocks.map(b => b.style.display);
+    qBlocks.forEach(b => { b.style.display = 'block'; });
+    passageEl.style.position  = 'relative';
+    questionEl.style.position = 'relative';
+
+    const pBcr = passageEl.getBoundingClientRect();
+    const qBcr = questionEl.getBoundingClientRect();
+
+    // 문단 범위 수집 (offsetTop 기준)
+    const paraEls    = Array.from(passageEl.querySelectorAll('.passage-para'));
+    const paraRanges = paraEls.map(el => ({
+        top:    el.offsetTop,
+        bottom: el.offsetTop + el.offsetHeight,
+        text:   el.innerText || el.textContent || ''
+    }));
+
+    // 문제 HTML 수집
+    const qTexts = qBlocks.map(b => b.innerHTML);
+    const numQ   = Math.max(1, _TOTAL_QUESTIONS || qBlocks.length || 3);
+
+    // 복원
+    qBlocks.forEach((b, i) => { b.style.display = savedDsp[i]; });
+
+    const pInfo = { left: pBcr.left, top: pBcr.top, w: pBcr.width, scrollH: passageEl.scrollHeight };
+    const qInfo = { left: qBcr.left, top: qBcr.top, w: qBcr.width, scrollH: questionEl.scrollHeight };
+
+    _replayActive = true;
+    const btn = document.getElementById('btnReplay');
+    if (btn) { btn.textContent = '■ 중단'; btn.classList.add('replay-active'); }
+
+    // ── 오버레이 생성 ──
+    const HDR_H    = 54;
+    const FTR_H    = 108;
+    const BODY_H   = window.innerHeight - HDR_H - FTR_H;
+    const BODY_W   = window.innerWidth;
+    const pWrapW   = Math.floor(BODY_W * 0.60);
+    const qWrapW   = BODY_W - pWrapW - 1;
+    const numParas = paraRanges.length || 1;
+    const GAP      = 8;
+    const rectH    = Math.floor((BODY_H - GAP * (numParas + 1)) / numParas);
+
+    // 각 문단 사각형의 overlay 내 Y 좌표
+    const paraRects = paraRanges.map((_, i) => ({
+        y: GAP + i * (rectH + GAP),
+        h: rectH
+    }));
+
+    const ovl = _buildReplayOverlay2(snap, totalMs, paraRanges, paraRects, rectH, qTexts, numQ, pInfo, qInfo, pWrapW, qWrapW, BODY_H, HDR_H, FTR_H, GAP);
+    document.body.appendChild(ovl);
+
+    const dot    = document.getElementById('_rplDot');
+    const fill   = document.getElementById('_rplFill');
+    const tLabel = document.getElementById('_rplTimeLabel');
+
+    let replayIdx = 0;
+    let lastDotX  = null, lastDotY = null;
+    let lastQIdx  = -1;
+    const wallStart = Date.now();
+
+    function step() {
+        if (!_replayActive) return;
+        const elapsed = Date.now() - wallStart;
+
+        while (replayIdx < snap.length && snap[replayIdx].t <= elapsed) replayIdx++;
+        if (replayIdx >= snap.length) { stopReplay(); return; }
+
+        const frame = snap[Math.max(0, replayIdx - 1)];
+
+        // 문제 패널 전환 (qIdx 변경 시)
+        if (typeof frame.qIdx === 'number' && frame.qIdx !== lastQIdx) {
+            lastQIdx = frame.qIdx;
+            document.querySelectorAll('#_rplOvl ._rplQBlock').forEach((b, i) => {
+                b.style.display = (i === frame.qIdx) ? 'block' : 'none';
+            });
+            const lbl = document.getElementById('_rplQLabel');
+            if (lbl) lbl.textContent = `Q ${frame.qIdx + 1} / ${qTexts.length}`;
+        }
+
+        // 시선 dot 위치 계산
+        if (dot && typeof frame.x === 'number' && frame.s <= 1) {
+            const inP = frame.x >= pInfo.left && frame.x <= pInfo.left + pInfo.w;
+            const inQ = !inP && frame.x >= qInfo.left && frame.x <= qInfo.left + qInfo.w;
+
+            if (inP) {
+                // 어느 문단 사각형에 해당하는지 판별
+                const contentY = frame.y - pInfo.top + (frame.scrl || 0);
+                const pIdx = paraRanges.findIndex(r => contentY >= r.top && contentY < r.bottom);
+                if (pIdx >= 0) {
+                    const rx = GAP + (frame.x - pInfo.left) / Math.max(pInfo.w, 1) * (pWrapW - GAP * 2);
+                    const ry = paraRects[pIdx].y + paraRects[pIdx].h / 2;
+                    lastDotX = rx; lastDotY = ry;
+                }
+            } else if (inQ) {
+                const rx = pWrapW + 1 + GAP + (frame.x - qInfo.left) / Math.max(qInfo.w, 1) * (qWrapW - GAP * 2);
+                const ry = Math.min(BODY_H - 20, (frame.y - qInfo.top + (frame.qscrl || 0)) * (BODY_H / Math.max(qInfo.scrollH / numQ, 1)));
+                lastDotX = rx; lastDotY = Math.max(10, ry);
+            }
+        }
+
+        if (dot && lastDotX !== null) {
+            dot.style.display = 'block';
+            dot.style.left    = lastDotX + 'px';
+            dot.style.top     = lastDotY + 'px';
+        }
+
+        const pct = Math.min(elapsed / totalMs * 100, 100);
+        if (fill)   fill.style.width   = pct + '%';
+        if (tLabel) tLabel.textContent = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
+
+        _replayRAF = requestAnimationFrame(step);
+    }
+
+    _replayRAF = requestAnimationFrame(step);
+    setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs / 1000)}초)...`);
+    logI('replay', `리플레이 시작: ${snap.length}프레임, ${Math.ceil(totalMs / 1000)}초`);
+}
+
+function stopReplay() {
+    _replayActive = false;
+    if (_replayRAF) { cancelAnimationFrame(_replayRAF); _replayRAF = null; }
+
+    const ovl = document.getElementById('_rplOvl');
+    if (ovl) ovl.remove();
+
+    const btn = document.getElementById('btnReplay');
+    if (btn) { btn.textContent = '▶ 리플레이'; btn.classList.remove('replay-active'); }
+
+    clearAllAOI();
+    showQuestion(_currentQIdx);
+    setStatus('리플레이 완료.');
+    logI('replay', '리플레이 종료');
+}
+
+function _buildReplayOverlay2(snap, totalMs, paraRanges, paraRects, rectH, qTexts, numQ, pInfo, qInfo, pWrapW, qWrapW, BODY_H, HDR_H, FTR_H, GAP) {
+    const BODY_W = window.innerWidth;
+
+    const ovl = _el('div', '', 'position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;background:#07091a;overflow:hidden;font-family:Inter,sans-serif');
+    ovl.id = '_rplOvl';
+
+    // ── 헤더 ──
+    const hdr = _el('div', '', `height:${HDR_H}px;flex-shrink:0;display:flex;align-items:center;padding:0 18px;gap:12px;background:rgba(7,9,26,.97);border-bottom:1px solid rgba(108,123,255,.22)`);
+    hdr.appendChild(_el('span', '👁  리플레이 분석', 'font:600 15px/1 Inter;color:#e8ecf4;letter-spacing:.03em'));
+    const btnCl = _el('button', '✕ 닫기', 'margin-left:auto;padding:5px 14px;font:600 11px Inter;border-radius:20px;border:1.5px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#94a3b8;cursor:pointer');
+    btnCl.onclick = stopReplay;
+    hdr.appendChild(btnCl);
+    ovl.appendChild(hdr);
+
+    // ── 바디 ──
+    const body = _el('div', '', `height:${BODY_H}px;display:flex;position:relative;overflow:hidden;flex-shrink:0`);
+
+    // ── 지문 패널: 문단 사각형들 ──
+    const pWrap = _el('div', '', `width:${pWrapW}px;height:${BODY_H}px;flex-shrink:0;position:relative;overflow:hidden`);
+    pWrap.appendChild(_el('div', '📖 지문', 'position:absolute;top:2px;left:10px;font:700 9px Inter;color:rgba(108,123,255,.7);z-index:3;pointer-events:none;letter-spacing:.06em'));
+
+    // 문단별 line-clamp 수 계산 (padding 16px, line-height ~20px)
+    const linesPerRect = Math.max(1, Math.floor((rectH - 16) / 20));
+
+    paraRanges.forEach((para, i) => {
+        const r = paraRects[i];
+        const box = document.createElement('div');
+        box.dataset.paraIdx = i;
+        box.style.cssText = [
+            'position:absolute',
+            `left:${GAP}px`,
+            `top:${r.y}px`,
+            `width:${pWrapW - GAP * 2}px`,
+            `height:${r.h}px`,
+            'box-sizing:border-box',
+            'padding:8px 14px',
+            'border:1.5px solid rgba(108,123,255,.35)',
+            'border-radius:8px',
+            'background:rgba(255,255,255,.025)',
+            'font:13px/1.55 Inter,sans-serif',
+            'color:#cbd5e1',
+            'overflow:hidden',
+            'display:-webkit-box',
+            '-webkit-box-orient:vertical',
+            `-webkit-line-clamp:${linesPerRect}`,
+            'word-break:keep-all',
+        ].join(';');
+        box.textContent = para.text;
+        pWrap.appendChild(box);
+    });
+
+    // 시선 dot (지문 영역 내)
+    const dot = _el('div', '', 'position:absolute;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle,rgba(255,220,50,.95)25%,rgba(255,200,0,.6)70%);border:2px solid #ffd632;box-shadow:0 0 10px rgba(255,200,0,.9);transform:translate(-50%,-50%);pointer-events:none;z-index:10;display:none');
+    dot.id = '_rplDot';
+    pWrap.appendChild(dot);
+
+    // ── 구분선 ──
+    const divider = _el('div', '', 'width:1px;background:rgba(108,123,255,.2);flex-shrink:0');
+
+    // ── 문제 패널 ──
+    const qWrap = _el('div', '', `width:${qWrapW}px;height:${BODY_H}px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden`);
+    qWrap.appendChild(_el('div', '📝 문제', 'flex-shrink:0;padding:6px 16px 4px;font:700 9px Inter;color:rgba(167,139,250,.7);letter-spacing:.06em'));
+
+    // 문제 콘텐츠 영역
+    const qContent = _el('div', '', 'flex:1;position:relative;overflow:hidden');
+    qTexts.forEach((html, i) => {
+        const block = document.createElement('div');
+        block.classList.add('_rplQBlock');
+        block.style.cssText = [
+            'position:absolute;inset:0',
+            'padding:12px 20px 12px',
+            'overflow:hidden',
+            'color:#e2e8f0',
+            `display:${i === 0 ? 'block' : 'none'}`,
+            'font:14px/1.65 Inter,sans-serif',
+        ].join(';');
+        block.innerHTML = html;
+        block.querySelectorAll('*').forEach(el => {
+            el.style.overflow  = 'hidden';
+            el.style.overflowY = 'hidden';
+        });
+        qContent.appendChild(block);
+    });
+    qWrap.appendChild(qContent);
+
+    // Q 네비게이션
+    let _dispQIdx = 0;
+    const qNav = _el('div', '', 'flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:10px;padding:6px 0 8px;border-top:1px solid rgba(108,123,255,.15)');
+    const btnPrev = _el('button', '← 이전', 'padding:4px 14px;font:600 11px Inter;border-radius:20px;border:1px solid rgba(108,123,255,.3);background:rgba(108,123,255,.08);color:#6c7bff;cursor:pointer');
+    const qLabel  = _el('span', `Q 1 / ${qTexts.length}`, 'font:600 11px Inter;color:#94a3b8;min-width:60px;text-align:center');
+    qLabel.id = '_rplQLabel';
+    const btnNext = _el('button', '다음 →', 'padding:4px 14px;font:600 11px Inter;border-radius:20px;border:1px solid rgba(108,123,255,.3);background:rgba(108,123,255,.08);color:#6c7bff;cursor:pointer');
+
+    const switchQ = (idx) => {
+        _dispQIdx = Math.max(0, Math.min(qTexts.length - 1, idx));
+        document.querySelectorAll('#_rplOvl ._rplQBlock').forEach((b, i) => {
+            b.style.display = (i === _dispQIdx) ? 'block' : 'none';
+        });
+        qLabel.textContent = `Q ${_dispQIdx + 1} / ${qTexts.length}`;
+    };
+    btnPrev.onclick = () => switchQ(_dispQIdx - 1);
+    btnNext.onclick = () => switchQ(_dispQIdx + 1);
+    [btnPrev, qLabel, btnNext].forEach(n => qNav.appendChild(n));
+    qWrap.appendChild(qNav);
+
+    [pWrap, divider, qWrap].forEach(n => body.appendChild(n));
+    ovl.appendChild(body);
+
+    // ── 푸터 ──
+    const ftr = _el('div', '', `height:${FTR_H}px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:0 18px;background:rgba(7,9,26,.97);border-top:1px solid rgba(108,123,255,.15)`);
+
+    // 체류시간 바
+    const dwellMap = {};
+    let prevT = 0;
+    snap.forEach(fr => {
+        const dt = fr.t - prevT; prevT = fr.t;
+        if (fr.aois) fr.aois.forEach(a => { dwellMap[a] = (dwellMap[a] || 0) + dt; });
+    });
+    const barRow   = _el('div', '', 'display:flex;align-items:flex-end;gap:6px;height:48px');
+    const maxDwell = Math.max(1, ...Object.values(dwellMap));
+    Object.entries(dwellMap).sort((a, b) => a[0].localeCompare(b[0])).forEach(([id, ms]) => {
+        const col  = _el('div', '', 'display:flex;flex-direction:column;align-items:center;gap:2px');
+        const barH = Math.max(4, Math.round((ms / maxDwell) * 40));
+        const c    = id.startsWith('Q') ? '#a78bfa' : '#6c7bff';
+        col.appendChild(_el('div', '', `width:22px;height:${barH}px;background:${c};border-radius:3px 3px 0 0`));
+        col.appendChild(_el('span', id, 'font:600 8px Inter;color:#64748b'));
+        barRow.appendChild(col);
+    });
+    ftr.appendChild(barRow);
+
+    // 진행 바
+    const progWrap = _el('div', '', 'display:flex;align-items:center;gap:10px');
+    const tLabel   = _el('span', '0:00 / ' + fmtMs(totalMs), 'font:600 11px Inter;color:#64748b;white-space:nowrap;min-width:80px');
+    tLabel.id = '_rplTimeLabel';
+    const track = _el('div', '', 'flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden');
+    const fill  = _el('div', '', 'height:100%;width:0%;background:linear-gradient(90deg,#6c7bff,#a78bfa);border-radius:2px;transition:width .1s linear');
+    fill.id = '_rplFill';
+    track.appendChild(fill);
+    [tLabel, track].forEach(n => progWrap.appendChild(n));
+    ftr.appendChild(progWrap);
+    ovl.appendChild(ftr);
+
+    return ovl;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // §13. Safe Shutdown (deinitialize 1초 딜레이 문제 해결)
