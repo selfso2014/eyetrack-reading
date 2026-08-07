@@ -1521,121 +1521,135 @@ function _barHtml(pct, colorClass) {
 }
 
 function showGazeStats() {
-    const modal = document.getElementById('gazeStatsModal');
-    const content = document.getElementById('statsContent');
-    if (!modal || !content) return;
+    try {
+        // 기존 모달 제거
+        var old = document.getElementById('_statsOverlay');
+        if (old) old.remove();
 
-    // ── 버튼 클릭 시점의 스냅샷 ──
-    const snap = [..._gazeLog];
-    if (snap.length < 2) {
-        content.innerHTML = '<p style="color:#6b7280;text-align:center;padding:32px 0;">아직 시선 데이터가 없습니다.<br>Eye tracking 시작 후 다시 확인하세요.</p>';
-        modal.classList.remove('hidden');
-        return;
+        // 데이터 스냅샷
+        var snap = _gazeLog.slice();
+        var bodyHtml = '';
+
+        if (snap.length < 2) {
+            bodyHtml = '<p style="text-align:center;color:#9ca3af;padding:40px 0;font-size:15px">'
+                     + '아직 시선 데이터가 없습니다.<br>'
+                     + '<span style="font-size:13px;color:#6b7280">Eye tracking 시작 후 다시 확인하세요.</span>'
+                     + '</p>';
+        } else {
+            var totalMs     = snap[snap.length - 1].t;
+            var totalFrames = snap.length;
+            var okFrames    = 0;
+            for (var fi = 0; fi < snap.length; fi++) { if (snap[fi].s === 0) okFrames++; }
+            var trackRate  = Math.round(okFrames / totalFrames * 100);
+            var trackColor = trackRate >= 70 ? '#34d399' : trackRate >= 40 ? '#fbbf24' : '#f87171';
+
+            // 문제별 체류
+            var qTime = [0, 0, 0];
+            for (var i = 0; i < snap.length - 1; i++) {
+                var dt = snap[i+1].t - snap[i].t;
+                var qi = snap[i].qIdx;
+                if (qi >= 0 && qi < 3) qTime[qi] += dt;
+            }
+            var qMax = Math.max(qTime[0], qTime[1], qTime[2], 1);
+
+            // AOI별 테두리 시간
+            var aoiTime = {};
+            for (var j = 0; j < snap.length - 1; j++) {
+                var dt2  = snap[j+1].t - snap[j].t;
+                var aois = snap[j].aois || [];
+                for (var k = 0; k < aois.length; k++) {
+                    aoiTime[aois[k]] = (aoiTime[aois[k]] || 0) + dt2;
+                }
+            }
+
+            function localFmtMs(ms) {
+                if (!ms || ms <= 0) return '0ms';
+                return ms < 1000 ? Math.round(ms) + 'ms' : (ms/1000).toFixed(1) + '초';
+            }
+            function localFmtMmSs(ms) {
+                var s = Math.floor(ms/1000), m = Math.floor(s/60);
+                return (m<10?'0':'')+m+':'+(s%60<10?'0':'')+(s%60);
+            }
+            function mkBar(pct, color) {
+                var w = Math.min(pct||0, 100).toFixed(1);
+                return '<div style="flex:1;height:7px;background:rgba(255,255,255,0.09);border-radius:4px;overflow:hidden">'
+                     + '<div style="width:'+w+'%;height:100%;background:'+color+';border-radius:4px"></div></div>';
+            }
+
+            var now    = new Date();
+            var nowStr = (now.getHours()<10?'0':'')+now.getHours()+':'
+                       + (now.getMinutes()<10?'0':'')+now.getMinutes()+':'
+                       + (now.getSeconds()<10?'0':'')+now.getSeconds();
+
+            var K = 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px;text-align:center;';
+            bodyHtml += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:22px">';
+            bodyHtml += '<div style="'+K+'"><div style="font-size:1.5rem;font-weight:800;color:#f9fafb">'+localFmtMmSs(totalMs)+'</div><div style="font-size:.7rem;color:#6b7280;margin-top:4px">총 기록 시간</div></div>';
+            bodyHtml += '<div style="'+K+'"><div style="font-size:1.5rem;font-weight:800;color:#f9fafb">'+totalFrames.toLocaleString()+'</div><div style="font-size:.7rem;color:#6b7280;margin-top:4px">총 프레임</div></div>';
+            bodyHtml += '<div style="'+K+'"><div style="font-size:1.5rem;font-weight:800;color:'+trackColor+'">'+trackRate+'%</div><div style="font-size:.7rem;color:#6b7280;margin-top:4px">유효 추적률</div></div>';
+            bodyHtml += '</div>';
+
+            var SEC = 'font-size:.72rem;font-weight:700;letter-spacing:.08em;color:#6b7280;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.07)';
+            bodyHtml += '<div style="'+SEC+'">문제별 체류 시간</div>';
+            var qNames = ['문제 1','문제 2','문제 3'];
+            for (var qi2 = 0; qi2 < 3; qi2++) {
+                bodyHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+                          + '<span style="width:60px;font-size:.82rem;color:#d1d5db;flex-shrink:0">'+qNames[qi2]+'</span>'
+                          + mkBar(qTime[qi2]/qMax*100, 'linear-gradient(90deg,#fbbf24,#f59e0b)')
+                          + '<span style="width:58px;text-align:right;font-size:.82rem;color:#f9fafb;font-weight:600;flex-shrink:0">'+localFmtMs(qTime[qi2])+'</span>'
+                          + '</div>';
+            }
+
+            bodyHtml += '<div style="'+SEC+';margin-top:18px">AOI 집중 응시 시간 (녹색테두리 ON 누적)</div>';
+            var aoiIds   = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
+            var aoiNames = {'para-0':'지문 문단1','para-1':'지문 문단2','para-2':'지문 문단3','para-3':'지문 문단4','q-1':'문제1 선지','q-2':'문제2 선지','q-3':'문제3 선지'};
+            var aoiMaxVal = 1;
+            for (var a = 0; a < aoiIds.length; a++) { if ((aoiTime[aoiIds[a]]||0) > aoiMaxVal) aoiMaxVal = aoiTime[aoiIds[a]]; }
+            for (var a2 = 0; a2 < aoiIds.length; a2++) {
+                var aid = aoiIds[a2], ams = aoiTime[aid]||0;
+                var acolor = aid.indexOf('para-') === 0 ? 'linear-gradient(90deg,#34d399,#10b981)' : 'linear-gradient(90deg,#60a5fa,#3b82f6)';
+                bodyHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+                          + '<span style="width:78px;font-size:.82rem;color:#d1d5db;flex-shrink:0">'+aoiNames[aid]+'</span>'
+                          + mkBar(ams/aoiMaxVal*100, acolor)
+                          + '<span style="width:58px;text-align:right;font-size:.82rem;color:'+(ams>0?'#f9fafb':'#4b5563')+';font-weight:600;flex-shrink:0">'+(ams>0?localFmtMs(ams):'—')+'</span>'
+                          + '</div>';
+            }
+            bodyHtml += '<div style="text-align:right;font-size:.7rem;color:#4b5563;margin-top:14px">📅 조회: '+nowStr+' | '+snap.length.toLocaleString()+'프레임</div>';
+        }
+
+        // 모달 동적 생성 (HTML/CSS 완전 독립, z-index:99999)
+        var overlay = document.createElement('div');
+        overlay.id = '_statsOverlay';
+        overlay.setAttribute('style',
+            'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.78);'
+          + 'display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box');
+        overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+
+        var card = document.createElement('div');
+        card.setAttribute('style',
+            'background:#12121e;border:1px solid rgba(251,191,36,0.4);border-radius:16px;'
+          + 'max-width:640px;width:100%;max-height:82vh;overflow-y:auto;padding:24px;'
+          + 'color:#f9fafb;font-family:inherit;box-sizing:border-box;'
+          + 'box-shadow:0 24px 64px rgba(0,0,0,0.85)');
+        card.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
+          + '<h2 style="margin:0;font-size:1.1rem;font-weight:700;color:#fbbf24">📊 누적 시선 통계</h2>'
+          + '<button id="_statsClose" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#9ca3af;border-radius:8px;width:32px;height:32px;font-size:1rem;cursor:pointer">✕</button>'
+          + '</div>' + bodyHtml;
+
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+
+        document.getElementById('_statsClose').addEventListener('click', function(){ overlay.remove(); });
+
+        logI('stats', 'modal shown frames=' + snap.length);
+    } catch(err) {
+        alert('[통계 오류] ' + err.message);
     }
-
-    const totalMs     = snap[snap.length - 1].t;
-    const totalFrames = snap.length;
-    const okFrames    = snap.filter(f => f.s === 0).length;
-    const trackRate   = Math.round(okFrames / totalFrames * 100);
-
-    // ── 문제별 체류 시간 (qIdx 기반) ──
-    const qLabels = ['문제 1', '문제 2', '문제 3'];
-    const qTime   = [0, 0, 0];
-    for (let i = 0; i < snap.length - 1; i++) {
-        const dt  = snap[i + 1].t - snap[i].t;
-        const idx = snap[i].qIdx;
-        if (idx >= 0 && idx < qTime.length) qTime[idx] += dt;
-    }
-    const qMax = Math.max(...qTime, 1);
-
-    // ── AOI별 녹색테두리 지속 시간 ──
-    // 각 프레임의 aois 배열에 id가 있으면 → 그 프레임 간격만큼 해당 AOI에 누적
-    const aoiTime = {};
-    for (let i = 0; i < snap.length - 1; i++) {
-        const dt = snap[i + 1].t - snap[i].t;
-        (snap[i].aois || []).forEach(id => {
-            aoiTime[id] = (aoiTime[id] || 0) + dt;
-        });
-    }
-    // 정렬: para-0~3 먼저, 그 다음 q-1~3
-    const aoiOrder  = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
-    const aoiLabels = {
-        'para-0': '지문 문단 1', 'para-1': '지문 문단 2',
-        'para-2': '지문 문단 3', 'para-3': '지문 문단 4',
-        'q-1': '문제 1 선지', 'q-2': '문제 2 선지', 'q-3': '문제 3 선지',
-    };
-    const aoiMax = Math.max(...aoiOrder.map(id => aoiTime[id] || 0), 1);
-
-    // ── AOI 색상: para=green, q=blue ──
-    const aoiColor = id => id.startsWith('para-') ? '' : 'blue';
-
-    // ── 렌더 ──
-    const now = new Date();
-    const nowStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-
-    content.innerHTML = `
-      <!-- 전체 요약 KPI -->
-      <div class="stats-section">
-        <div class="stats-section-title">전체 요약</div>
-        <div class="stats-summary-grid">
-          <div class="stats-kpi">
-            <div class="stats-kpi-val">${_fmtMmSs(totalMs)}</div>
-            <div class="stats-kpi-label">총 기록 시간</div>
-          </div>
-          <div class="stats-kpi">
-            <div class="stats-kpi-val">${totalFrames.toLocaleString()}</div>
-            <div class="stats-kpi-label">총 프레임 수</div>
-          </div>
-          <div class="stats-kpi">
-            <div class="stats-kpi-val" style="color:${trackRate>=70?'#34d399':trackRate>=40?'#fbbf24':'#f87171'}">${trackRate}%</div>
-            <div class="stats-kpi-label">유효 추적률 (State=OK)</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 문제별 체류 시간 -->
-      <div class="stats-section">
-        <div class="stats-section-title">문제별 체류 시간</div>
-        <table class="stats-table">
-          <thead><tr><th>문제</th><th>비율</th><th>시간</th></tr></thead>
-          <tbody>
-            ${qLabels.map((label, i) => `
-              <tr>
-                <td>${label}</td>
-                <td><div class="stats-bar-wrap">${_barHtml(qTime[i] / qMax * 100, 'yellow')}</div></td>
-                <td>${_fmtMs(qTime[i])}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- AOI별 녹색테두리 지속 시간 -->
-      <div class="stats-section">
-        <div class="stats-section-title">AOI 집중 응시 시간 (녹색테두리 ON 누적)</div>
-        <table class="stats-table">
-          <thead><tr><th>영역</th><th>비율</th><th>시간</th></tr></thead>
-          <tbody>
-            ${aoiOrder.map(id => {
-                const ms  = aoiTime[id] || 0;
-                const pct = ms / aoiMax * 100;
-                return `<tr>
-                  <td>${aoiLabels[id] || id}</td>
-                  <td><div class="stats-bar-wrap">${_barHtml(pct, aoiColor(id))}</div></td>
-                  <td>${ms > 0 ? _fmtMs(ms) : '<span style="color:#4b5563">—</span>'}</td>
-                </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="stats-timestamp">📅 조회 시각: ${nowStr} &nbsp;|&nbsp; 스냅샷 ${snap.length.toLocaleString()}프레임</div>
-    `;
-
-    modal.classList.remove('hidden');
-    logI('stats', `통계 모달 열림: ${snap.length}프레임, 총 ${_fmtMmSs(totalMs)}`);
 }
 
 function closeGazeStats() {
-    const modal = document.getElementById('gazeStatsModal');
-    if (modal) modal.classList.add('hidden');
+    var el = document.getElementById('_statsOverlay');
+    if (el) el.remove();
 }
+
+
