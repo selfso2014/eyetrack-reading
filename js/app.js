@@ -1138,129 +1138,276 @@ function toggleTimer() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function startReplay() {
-    if (_gazeLog.length === 0) {
-        logW('replay', '기록된 시선 데이터 없음'); return;
-    }
+    if (_gazeLog.length === 0) { logW('replay', '기록된 시선 데이터 없음'); return; }
     if (_replayActive) { stopReplay(); return; }
 
-    // ── 버튼 누른 시점의 로그 스냅샷 ──
     const snap    = _gazeLog.slice();
     const totalMs = snap[snap.length - 1].t;
+
+    // ── 패널 측정 (오버레이 생성 전, 원본 DOM 기준) ──
+    const passageEl  = document.getElementById('passagePanel');
+    const questionEl = document.getElementById('questionViewport');
+    if (!passageEl || !questionEl) return;
+
+    // question-block 모두 표시해서 scrollHeight 측정 후 복원
+    const qBlocks = Array.from(document.querySelectorAll('.question-block'));
+    const savedDsp = qBlocks.map(b => b.style.display);
+    qBlocks.forEach(b => { b.style.display = 'block'; });
+    passageEl.style.position  = 'relative';
+    questionEl.style.position = 'relative';
+
+    const pBcr = passageEl.getBoundingClientRect();
+    const qBcr = questionEl.getBoundingClientRect();
+    const pInfo = { left: pBcr.left, top: pBcr.top, w: passageEl.offsetWidth,  scrollH: passageEl.scrollHeight  };
+    const qInfo = { left: qBcr.left, top: qBcr.top, w: questionEl.offsetWidth, scrollH: questionEl.scrollHeight };
+    qBlocks.forEach((b, i) => { b.style.display = savedDsp[i]; });
 
     _replayActive = true;
     const btn = document.getElementById('btnReplay');
     if (btn) { btn.textContent = '■ 중단'; btn.classList.add('replay-active'); }
 
-    // 모든 question-block 표시 (리플레이 중 qIdx 따라 전환)
-    const allBlocks = Array.from(document.querySelectorAll('.question-block'));
+    // ── 오버레이 생성 ──
+    const ovl = _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo);
+    document.body.appendChild(ovl);
 
-    const dot = document.getElementById('replayDot');
-    if (dot) dot.style.display = 'block';
+    const S      = ovl._S;
+    const pWrapW = ovl._pWrapW;
+    const sCanvas = document.getElementById('_rplStaticCanvas');
+    const dot    = document.getElementById('_rplDot');
+    const fill   = document.getElementById('_rplFill');
+    const tLabel = document.getElementById('_rplTimeLabel');
 
-    clearAllAOI();
+    // 정적 레이어: 픽세이션 + 스캔패스 (한 번만 그리기)
+    if (sCanvas) _drawStaticReplay(sCanvas, snap, S, pInfo, qInfo, pWrapW);
 
-    // 전체 AOI 요소 캐시 (지문 + 전체 문제)
-    const allAOIEls = [
-        ...document.querySelectorAll('.passage-para'),
-        ...document.querySelectorAll('.question-block'),
-    ];
-
-    // ── 하단 Progress Bar 생성 ──
-    const bar = document.createElement('div');
-    bar.id = '_replayProgressBar';
-    bar.style.cssText = [
-        'position:fixed', 'bottom:0', 'left:0', 'right:0', 'height:44px',
-        'background:rgba(7,9,26,0.96)', 'border-top:1px solid rgba(108,123,255,0.25)',
-        'display:flex', 'align-items:center', 'gap:10px', 'padding:0 16px',
-        'z-index:8000', 'backdrop-filter:blur(10px)'
-    ].join(';');
-
-    const timeLabel = document.createElement('span');
-    timeLabel.style.cssText = 'font:12px/1 monospace;color:#94a3b8;min-width:110px;flex-shrink:0';
-    timeLabel.textContent = '0:00 / ' + fmtMs(totalMs);
-
-    const track = document.createElement('div');
-    track.style.cssText = [
-        'flex:1', 'height:6px', 'background:rgba(255,255,255,0.08)',
-        'border-radius:999px', 'overflow:hidden', 'cursor:pointer'
-    ].join(';');
-
-    const fill = document.createElement('div');
-    fill.style.cssText = [
-        'height:100%', 'width:0%',
-        'background:linear-gradient(90deg,#6c7bff,#a78bfa)',
-        'border-radius:999px',
-        'transition:width 0.1s linear'
-    ].join(';');
-    track.appendChild(fill);
-
-    const totalLabel = document.createElement('span');
-    totalLabel.style.cssText = 'font:12px/1 monospace;color:#475569;flex-shrink:0';
-    totalLabel.textContent = fmtMs(totalMs);
-
-    bar.appendChild(timeLabel);
-    bar.appendChild(track);
-    bar.appendChild(totalLabel);
-    document.body.appendChild(bar);
-
-    let replayIdx  = 0;
-    let lastDotX    = null;   // 마지막으로 유효했던 x 좌표 (tracking 유실 시 유지)
-    let lastDotY    = null;
+    let replayIdx = 0;
+    let lastDotX  = null, lastDotY = null;
     const wallStart = Date.now();
-
-    setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs / 1000)}초)...`);
 
     function step() {
         if (!_replayActive) return;
         const elapsed = Date.now() - wallStart;
 
-        // elapsed 시각까지의 프레임 소비
-        while (replayIdx < snap.length && snap[replayIdx].t <= elapsed) {
-            replayIdx++;
-        }
-
+        while (replayIdx < snap.length && snap[replayIdx].t <= elapsed) replayIdx++;
         if (replayIdx >= snap.length) { stopReplay(); return; }
 
         const frame = snap[Math.max(0, replayIdx - 1)];
 
-        // 시선 닷 위치 갱신
-        // typeof 검사: frame.x가 undefined일 때 loose equality(!=null)가 false가 되는 버그 방지
-        if (dot) {
-            if (typeof frame.x === 'number' && typeof frame.y === 'number' && frame.s <= 1) {
-                lastDotX = frame.x;
-                lastDotY = frame.y;
-            }
-            // tracking 일시 유실 시 마지막 유효 좌표 유지 (dot 깜빡임 방지)
-            if (lastDotX !== null) {
-                dot.style.display = 'block';
-                dot.style.left    = `${lastDotX}px`;
-                dot.style.top     = `${lastDotY}px`;
-            } else {
-                dot.style.display = 'none';
+        if (dot && typeof frame.x === 'number' && typeof frame.y === 'number' && frame.s <= 1) {
+            const inP = frame.x >= pInfo.left && frame.x <= pInfo.left + pInfo.w;
+            const inQ = !inP && frame.x >= qInfo.left && frame.x <= qInfo.left + qInfo.w;
+            if (inP || inQ) {
+                const scrl = inP ? (frame.scrl || 0) : (frame.qscrl || 0);
+                const c = _rplCoord(frame.x, frame.y, scrl, inP, S, pInfo, qInfo, pWrapW);
+                lastDotX = c.x; lastDotY = c.y;
             }
         }
+        if (dot && lastDotX !== null) {
+            dot.style.display = 'block';
+            dot.style.left    = lastDotX + 'px';
+            dot.style.top     = lastDotY + 'px';
+        }
 
-        // 문제 화면 전환 (기록 당시 qIdx 반영)
-        allBlocks.forEach((el, i) => el.classList.toggle('q-current', i === frame.qIdx));
-        const counter = document.getElementById('questionCounter');
-        if (counter) counter.textContent = `${frame.qIdx + 1} / ${_TOTAL_QUESTIONS}`;
-
-        // AOI 테두리 복원
-        allAOIEls.forEach(el => {
-            const active = frame.aois && frame.aois.includes(el.dataset.aoi);
-            el.classList.toggle('aoi-active', active);
-        });
-
-        // ── Progress Bar 업데이트 ──
         const pct = Math.min(elapsed / totalMs * 100, 100);
-        fill.style.width      = pct + '%';
-        timeLabel.textContent = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
+        if (fill)   fill.style.width      = pct + '%';
+        if (tLabel) tLabel.textContent    = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
 
         _replayRAF = requestAnimationFrame(step);
     }
 
     _replayRAF = requestAnimationFrame(step);
+    setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs/1000)}초)...`);
     logI('replay', `리플레이 시작: ${snap.length}프레임, ${Math.ceil(totalMs/1000)}초`);
+}
+
+// ── 오버레이 DOM 구성 ──────────────────────────────────────────────────────────
+function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo) {
+    const HDR_H  = 54;
+    const FTR_H  = 108;
+    const BODY_H = window.innerHeight - HDR_H - FTR_H;
+    const BODY_W = window.innerWidth;
+    const pWrapW = Math.floor(BODY_W * 0.57);
+    const qWrapW = BODY_W - pWrapW - 1;
+
+    const Sp = Math.min(BODY_H / Math.max(pInfo.scrollH, 1), pWrapW / Math.max(pInfo.w, 1));
+    const Sq = Math.min(BODY_H / Math.max(qInfo.scrollH, 1), qWrapW / Math.max(qInfo.w, 1));
+    const S  = Math.min(Sp, Sq, 0.9);
+
+    const ovl = _el('div', '', 'position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;background:#07091a;overflow:hidden;font-family:Inter,sans-serif');
+    ovl.id = '_rplOvl';
+    ovl._S = S; ovl._pWrapW = pWrapW;
+
+    // 헤더
+    const hdr = _el('div', '', `height:${HDR_H}px;flex-shrink:0;display:flex;align-items:center;padding:0 18px;gap:12px;background:rgba(7,9,26,.97);border-bottom:1px solid rgba(108,123,255,.22)`);
+    hdr.appendChild(_el('span', '👁  리플레이 분석', 'font:600 15px/1 Inter;color:#e8ecf4;letter-spacing:.03em'));
+
+    const modeWrap = _el('div', '', 'display:flex;gap:8px;align-items:center;margin-left:auto');
+    const btnRt = _el('button', '▶ 실시간', 'padding:5px 14px;font:600 11px Inter;border-radius:20px;border:1.5px solid rgba(251,191,36,.6);background:rgba(251,191,36,.18);color:#fbbf24;cursor:pointer');
+    const btnSm = _el('button', '📊 요약',  'padding:5px 14px;font:600 11px Inter;border-radius:20px;border:1.5px solid rgba(108,123,255,.3);background:rgba(108,123,255,.08);color:#6c7bff;cursor:pointer');
+    const btnCl = _el('button', '✕ 닫기',   'padding:5px 14px;font:600 11px Inter;border-radius:20px;border:1.5px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#94a3b8;cursor:pointer;margin-left:4px');
+    btnCl.onclick = stopReplay;
+    btnSm.onclick = () => {
+        if (_replayRAF) { cancelAnimationFrame(_replayRAF); _replayRAF = null; }
+        const d = document.getElementById('_rplDot');
+        if (d) d.style.display = 'none';
+        const f = document.getElementById('_rplFill'); if (f) f.style.width = '100%';
+        const tl = document.getElementById('_rplTimeLabel'); if (tl) tl.textContent = fmtMs(totalMs) + ' / ' + fmtMs(totalMs);
+        btnSm.style.background = 'rgba(108,123,255,.25)';
+        btnRt.style.background = 'rgba(251,191,36,.06)';
+    };
+    [btnRt, btnSm, btnCl].forEach(b => modeWrap.appendChild(b));
+    hdr.appendChild(modeWrap);
+    ovl.appendChild(hdr);
+
+    // 바디
+    const body = _el('div', '', `height:${BODY_H}px;display:flex;position:relative;overflow:hidden;flex-shrink:0`);
+
+    const pWrap = _buildMinimap(passageEl, S, pWrapW, BODY_H, false);
+    pWrap.style.cssText += ';position:relative';
+    const pLbl = _el('div', '📖 지문', 'position:absolute;top:5px;left:7px;font:700 9px Inter;color:rgba(108,123,255,.8);z-index:3;pointer-events:none;letter-spacing:.06em;text-shadow:0 1px 3px #07091a');
+    pWrap.appendChild(pLbl);
+
+    const divider = _el('div', '', 'width:1px;background:rgba(108,123,255,.2);flex-shrink:0');
+
+    const qWrap = _buildMinimap(questionEl, S, qWrapW, BODY_H, true);
+    qWrap.style.cssText += ';position:relative';
+    const qLbl = _el('div', '📝 문제', 'position:absolute;top:5px;left:7px;font:700 9px Inter;color:rgba(167,139,250,.8);z-index:3;pointer-events:none;letter-spacing:.06em;text-shadow:0 1px 3px #07091a');
+    qWrap.appendChild(qLbl);
+
+    const sCanvas = document.createElement('canvas');
+    sCanvas.id = '_rplStaticCanvas';
+    sCanvas.width = BODY_W; sCanvas.height = BODY_H;
+    sCanvas.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:5';
+
+    const dot = _el('div', '', 'position:absolute;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle,rgba(255,220,50,.95)25%,rgba(255,200,0,.6)70%);border:2px solid #ffd632;box-shadow:0 0 10px rgba(255,200,0,.9);transform:translate(-50%,-50%);pointer-events:none;z-index:10;display:none');
+    dot.id = '_rplDot';
+
+    [pWrap, divider, qWrap, sCanvas, dot].forEach(n => body.appendChild(n));
+    ovl.appendChild(body);
+
+    ovl.appendChild(_buildReplayFooter(snap, totalMs, FTR_H));
+    return ovl;
+}
+
+// ── 미니맵: innerHTML 복사 + scale 변환 ────────────────────────────────────────
+function _buildMinimap(sourceEl, S, wrapW, wrapH, showAllBlocks) {
+    const wrap = _el('div', '', `width:${wrapW}px;height:${wrapH}px;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.012)`);
+    const inner = _el('div', '', `width:${sourceEl.scrollWidth}px;height:${sourceEl.scrollHeight}px;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;overflow:visible;pointer-events:none`);
+    inner.innerHTML = sourceEl.innerHTML;
+    inner.querySelectorAll('.panel-header').forEach(el => { el.style.position = 'relative'; });
+    if (showAllBlocks) {
+        inner.querySelectorAll('.question-block').forEach(el => { el.style.display = 'block'; });
+    }
+    wrap.appendChild(inner);
+    return wrap;
+}
+
+// ── 푸터: 체류시간 바 + 타임라인 ──────────────────────────────────────────────
+function _buildReplayFooter(snap, totalMs, ftrH) {
+    const ftr = _el('div', '', `height:${ftrH}px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:0 18px;background:rgba(7,9,26,.97);border-top:1px solid rgba(108,123,255,.15)`);
+
+    const dwellMap = {};
+    let prevT = 0;
+    snap.forEach(fr => {
+        const dt = fr.t - prevT; prevT = fr.t;
+        if (fr.aois) fr.aois.forEach(a => { dwellMap[a] = (dwellMap[a] || 0) + dt; });
+    });
+
+    const AOI_IDS  = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
+    const AOI_LBLS = ['P1','P2','P3','P4','Q1','Q2','Q3'];
+    const AOI_COLS = ['#6c7bff','#a78bfa','#34d399','#f472b6','#fbbf24','#60a5fa','#fb923c'];
+    const maxDwell = Math.max(...AOI_IDS.map(a => dwellMap[a] || 0), 1);
+
+    const dwellRow = _el('div', '', 'display:flex;align-items:flex-end;gap:6px');
+    dwellRow.appendChild(_el('span', '체류', 'font:10px monospace;color:#475569;flex-shrink:0;margin-right:2px;align-self:center'));
+    AOI_IDS.forEach((aoi, i) => {
+        const dwell = dwellMap[aoi] || 0;
+        const col   = AOI_COLS[i];
+        const cell  = _el('div', '', 'display:flex;flex-direction:column;align-items:center;gap:1px');
+        cell.appendChild(_el('div', '', `height:${Math.max(4, Math.round((dwell/maxDwell)*38))}px;width:22px;background:${col};border-radius:3px 3px 0 0;opacity:.85`));
+        cell.appendChild(_el('span', AOI_LBLS[i], `font:700 9px monospace;color:${col}`));
+        cell.appendChild(_el('span', (dwell/1000).toFixed(1)+'s', 'font:8px monospace;color:#475569'));
+        dwellRow.appendChild(cell);
+    });
+    ftr.appendChild(dwellRow);
+
+    const timeRow = _el('div', '', 'display:flex;align-items:center;gap:10px');
+    const tLabel  = _el('span', '0:00 / '+fmtMs(totalMs), 'font:12px monospace;color:#94a3b8;min-width:110px;flex-shrink:0');
+    tLabel.id = '_rplTimeLabel';
+    const track = _el('div', '', 'flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden');
+    const fill  = _el('div', '', 'height:100%;width:0%;background:linear-gradient(90deg,#6c7bff,#a78bfa);border-radius:999px;transition:width .1s linear');
+    fill.id = '_rplFill';
+    track.appendChild(fill);
+    [tLabel, track, _el('span', fmtMs(totalMs), 'font:12px monospace;color:#475569;flex-shrink:0')].forEach(n => timeRow.appendChild(n));
+    ftr.appendChild(timeRow);
+    return ftr;
+}
+
+// ── 정적 레이어: 픽세이션 + 스캔패스 + 리그레션 ──────────────────────────────
+function _drawStaticReplay(canvas, snap, S, pInfo, qInfo, pWrapW) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const pRect = { left: pInfo.left, top: pInfo.top, right: pInfo.left + pInfo.w, bottom: pInfo.top + window.innerHeight };
+    const qRect = { left: qInfo.left, top: qInfo.top, right: qInfo.left + qInfo.w, bottom: qInfo.top + window.innerHeight };
+
+    const fixations   = computeFixations(snap);
+    if (!fixations || fixations.length === 0) return;
+    const regressions = classifyRegressions(fixations, pRect, qRect);
+    const regIdxSet   = new Set((regressions || []).map(r => r.toIdx));
+
+    const COLORS = ['#6c7bff','#a78bfa','#34d399','#f472b6','#fbbf24','#60a5fa','#fb923c'];
+
+    // 스캔패스 선 (아래 레이어)
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1;
+    let prev = null;
+    fixations.forEach(fi => {
+        const inP = fi.x >= pInfo.left && fi.x <= pInfo.left + pInfo.w;
+        const inQ = !inP && fi.x >= qInfo.left && fi.x <= qInfo.left + qInfo.w;
+        if (!inP && !inQ) { prev = null; return; }
+        const c = _rplCoord(fi.x, fi.y, inP ? (fi.scrl||0) : (fi.qscrl||0), inP, S, pInfo, qInfo, pWrapW);
+        if (prev) { ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(c.x, c.y); ctx.stroke(); }
+        prev = c;
+    });
+    ctx.restore();
+
+    // 픽세이션 원 (위 레이어)
+    fixations.forEach((fi, idx) => {
+        const inP = fi.x >= pInfo.left && fi.x <= pInfo.left + pInfo.w;
+        const inQ = !inP && fi.x >= qInfo.left && fi.x <= qInfo.left + qInfo.w;
+        if (!inP && !inQ) return;
+        const c   = _rplCoord(fi.x, fi.y, inP ? (fi.scrl||0) : (fi.qscrl||0), inP, S, pInfo, qInfo, pWrapW);
+        const r   = Math.max(3, Math.min(16, (fi.duration / 500) * 12)) * Math.sqrt(S);
+        const col = COLORS[idx % COLORS.length];
+        const isR = regIdxSet.has(idx);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI*2);
+        ctx.fillStyle = _hexToRgba(col, 0.22); ctx.fill();
+        ctx.strokeStyle = isR ? '#ef4444' : col;
+        ctx.lineWidth   = isR ? 2.5 : 1.5;
+        ctx.stroke();
+        ctx.restore();
+    });
+}
+
+// ── viewport gaze → overlay canvas 좌표 ──────────────────────────────────────
+function _rplCoord(gx, gy, scrl, inPassage, S, pInfo, qInfo, pWrapW) {
+    if (inPassage) return { x: (gx - pInfo.left) * S, y: (gy - pInfo.top + scrl) * S };
+    return { x: pWrapW + 1 + (gx - qInfo.left) * S, y: (gy - qInfo.top + scrl) * S };
+}
+
+// ── hex → rgba ────────────────────────────────────────────────────────────────
+function _hexToRgba(hex, a) {
+    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return r ? `rgba(${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)},${a})` : `rgba(108,123,255,${a})`;
+}
+
+// ── DOM 엘리먼트 생성 헬퍼 ───────────────────────────────────────────────────
+function _el(tag, text, css) {
+    const e = document.createElement(tag);
+    if (text) e.textContent = text;
+    if (css)  e.style.cssText = css;
+    return e;
 }
 
 // ms → 'M:SS' 포맷
@@ -1273,18 +1420,17 @@ function stopReplay() {
     _replayActive = false;
     if (_replayRAF) { cancelAnimationFrame(_replayRAF); _replayRAF = null; }
 
+    const ovl = document.getElementById('_rplOvl');
+    if (ovl) ovl.remove();
+
+    // 구버전 replayDot 잔재 숨김
     const dot = document.getElementById('replayDot');
     if (dot) dot.style.display = 'none';
-
-    // ── Progress Bar 제거 ──
-    const bar = document.getElementById('_replayProgressBar');
-    if (bar) bar.remove();
 
     const btn = document.getElementById('btnReplay');
     if (btn) { btn.textContent = '▶ 리플레이'; btn.classList.remove('replay-active'); }
 
     clearAllAOI();
-    // 현재 문제 복원
     showQuestion(_currentQIdx);
     setStatus('리플레이 완료.');
     logI('replay', '리플레이 종료');
