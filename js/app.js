@@ -1906,7 +1906,7 @@ async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regression
         ai = await _requestGeminiAnalysis(apiKey, { dwell, fixCounts, regCounts, transitions, userAnswers: _userAnswers });
     } catch (e) {
         logW('graph', 'Gemini 실패: ' + e.message);
-        if (status) status.textContent = 'AI 분석 실패 (그래프는 표시됩니다)';
+        if (status) status.textContent = `AI 실패: ${e.message} | 키 변경 버튼으로 재시도`;
     }
     if (status && status.textContent === 'AI 분석 중...') status.textContent = '';
 
@@ -1937,7 +1937,14 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        let hint = '';
+        if (res.status === 400) hint = '(키 형식 오류 또는 요청 오류)';
+        if (res.status === 403) hint = '(키 권한 없음 — AIzaSy...로 시작하는 키 필요)';
+        if (res.status === 429) hint = '(요청 초과 — 잠시 후 재시도)';
+        throw new Error(`HTTP ${res.status} ${hint}`);
+    }
     const json = await res.json();
     const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
