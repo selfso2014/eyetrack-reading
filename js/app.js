@@ -1915,7 +1915,7 @@ async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regression
 }
 
 async function _requestGeminiAnalysis(apiKey, payload) {
-    const url  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro'];
     const prompt = `수능 독해 인지과학 전문가로서 학생의 시선 데이터를 분석하세요. JSON만 반환하세요.
 
 AOI별 체류시간(ms):${JSON.stringify(payload.dwell)}
@@ -1932,22 +1932,31 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
 {"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-    if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        let hint = '';
-        if (res.status === 400) hint = '(키 형식 오류 또는 요청 오류)';
-        if (res.status === 403) hint = '(키 권한 없음 — AIzaSy...로 시작하는 키 필요)';
-        if (res.status === 429) hint = '(요청 초과 — 잠시 후 재시도)';
-        throw new Error(`HTTP ${res.status} ${hint}`);
+    let lastErr = 'No models tried';
+    for (const model of MODELS) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            if (!res.ok) {
+                const body = await res.text().catch(() => '');
+                lastErr = `[${model}] HTTP ${res.status}: ${body.slice(0, 150)}`;
+                logW('graph', lastErr);
+                continue;
+            }
+            const json = await res.json();
+            const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+            logI('graph', `AI 분석 성공 (${model})`);
+            return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+        } catch (fetchErr) {
+            lastErr = `[${model}] ${fetchErr.message}`;
+            logW('graph', lastErr);
+        }
     }
-    const json = await res.json();
-    const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+    throw new Error(lastErr);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
