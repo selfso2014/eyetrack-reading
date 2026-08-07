@@ -1679,25 +1679,43 @@ function showGazeStats() {
 
     // ── 픽세이션 원 그리기 ──
     // 원시 점 위에 레이어로 덮어 그림 (더 눈에 띄게)
-    var fixations  = computeFixations(snap);
-    var FIX_FILL   = 'rgba(134,239,172,0.50)';  // 연한 초록 fill
-    var FIX_STROKE = 'rgba(74,222,128,0.90)';   // 진한 초록 stroke
+    var fixations = computeFixations(snap);
+
+    // 문단별 픽세이션 fill / stroke (PARA_RGBA 보다 조금 진하게)
+    var FIX_PARA_FILL   = ['rgba(52,211,153,0.45)','rgba(251,191,36,0.45)','rgba(96,165,250,0.45)','rgba(244,114,182,0.45)'];
+    var FIX_PARA_STROKE = ['rgba(52,211,153,0.95)','rgba(251,191,36,0.95)','rgba(96,165,250,0.95)','rgba(244,114,182,0.95)'];
+    var FIX_Q_FILL      = ['rgba(52,211,153,0.45)','rgba(251,191,36,0.45)','rgba(96,165,250,0.45)'];
+    var FIX_Q_STROKE    = ['rgba(52,211,153,0.95)','rgba(251,191,36,0.95)','rgba(96,165,250,0.95)'];
+    var FIX_DFLT_FILL   = 'rgba(156,163,175,0.35)';
+    var FIX_DFLT_STROKE = 'rgba(156,163,175,0.80)';
 
     for (var fi = 0; fi < fixations.length; fi++) {
         var fx = fixations[fi];
-        // 반지름: duration 100ms→8px, 500ms→30px 선형 비례
-        var fRadius = 8 + (Math.min(fx.duration, 500) - 100) / 400 * 22;
+        // 반지름: duration 에 정비례, 500ms = 15px
+        var fRadius = Math.min(fx.duration, 500) / 500 * 15;
+        if (fRadius < 3) fRadius = 3;   // 최소 3px
 
         if (fx.x >= passageRect.left && fx.x <= passageRect.right &&
             fx.y >= passageRect.top  && fx.y <= passageRect.bottom) {
 
             var fcx = fx.x - passageRect.left;
             var fcy = fx.y - passageRect.top + fx.scrl;
+
+            // 어느 문단인지 판별해 색상 선택
+            var fFill   = FIX_DFLT_FILL;
+            var fStroke = FIX_DFLT_STROKE;
+            for (var fpi = 0; fpi < paraRanges.length; fpi++) {
+                if (fcy >= paraRanges[fpi].top && fcy <= paraRanges[fpi].bottom) {
+                    fFill   = FIX_PARA_FILL  [paraRanges[fpi].idx] || FIX_DFLT_FILL;
+                    fStroke = FIX_PARA_STROKE[paraRanges[fpi].idx] || FIX_DFLT_STROKE;
+                    break;
+                }
+            }
             pCtx.beginPath();
             pCtx.arc(fcx, fcy, fRadius, 0, 6.2832);
-            pCtx.fillStyle   = FIX_FILL;
+            pCtx.fillStyle   = fFill;
             pCtx.fill();
-            pCtx.strokeStyle = FIX_STROKE;
+            pCtx.strokeStyle = fStroke;
             pCtx.lineWidth   = 1.5;
             pCtx.stroke();
 
@@ -1706,16 +1724,18 @@ function showGazeStats() {
 
             var fqx = fx.x - questRect.left;
             var fqy = fx.y - questRect.top + fx.qscrl;
+            var qfi = fx.qIdx;
             qCtx.beginPath();
             qCtx.arc(fqx, fqy, fRadius, 0, 6.2832);
-            qCtx.fillStyle   = FIX_FILL;
+            qCtx.fillStyle   = FIX_Q_FILL  [qfi] || FIX_DFLT_FILL;
             qCtx.fill();
-            qCtx.strokeStyle = FIX_STROKE;
+            qCtx.strokeStyle = FIX_Q_STROKE[qfi] || FIX_DFLT_STROKE;
             qCtx.lineWidth   = 1.5;
             qCtx.stroke();
         }
     }
     logI('stats', 'fixations=' + fixations.length + ' p=' + pDrawn + ' q=' + qDrawn);
+
 
     // ── UI 오버레이 (닫기·정보·범례) ──
 
