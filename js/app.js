@@ -1,4 +1,4 @@
-﻿// js/app.js — SeeSo Eye Tracking with iOS Crash Prevention
+// js/app.js — SeeSo Eye Tracking with iOS Crash Prevention
 // All patches derived from SDK v2.5.2 analysis
 // webpack-loader 코드 인라인 (file:// 프로토콜 지원: XHR 폴백 포함)
 async function loadWebpackModule(url) {
@@ -216,16 +216,6 @@ function resizeCanvas() {
 }
 
 function renderGaze() {
-    // 리플레이 중에는 gazeCanvas 그리기만 중단 — clearRect는 실행 (frozen dot 제거)
-    if (_replayActive) {
-        const c = els.canvas;
-        if (c) {
-            const ctx = c.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
-            ctx.clearRect(0, 0, c.width / dpr, c.height / dpr);
-        }
-        return;
-    }
     const now = performance.now();
     if (now - _lastRenderMs < CONFIG.RENDER_INTERVAL_MS) return;
     _lastRenderMs = now;
@@ -506,9 +496,7 @@ let _aoiDebugVisible = true;       // 독해 모드 진입 시 자동 표시
 // ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
 
-// ── 리플레이 상태 ──
-let _replayActive = false;
-let _replayRAF    = null;
+
 
 async function initSDK() {
     setPill(els.pillSdk, 'SDK: loading', 'warn');
@@ -626,9 +614,7 @@ function onGaze(gazeInfo) {
     if (_readingActive && _sessionStartTime) {
         // trackingState 0(SUCCESS) + 1(LOW_CONFIDENCE) 모두 AOI 체크
         // 실제 eye tracking에서 LOW_CONFIDENCE가 빈번하며, 0만 허용하면 AOI가 거의 탐지 안 됨
-        // 리플레이 중에는 checkAOI 차단 (replay step()이 AOI 테두리 복원 담당)
-        if (!_replayActive &&
-            (gazeState.trackingState === 0 || gazeState.trackingState === 1)
+        if ((gazeState.trackingState === 0 || gazeState.trackingState === 1)
             && gazeState.x != null && gazeState.y != null) {
             checkAOI(gazeState.x, gazeState.y);
         }
@@ -896,11 +882,8 @@ function showReadingLayout() {
         btnTimer.classList.add('is-on');
         btnTimer.classList.remove('is-off');
     }
-    if (btnReplay) { btnReplay.disabled = false; btnReplay.onclick = startReplay; }
+    if (btnReplay) btnReplay.disabled = true;  // 리플레이 미구현
     if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
-    if (btnStats)  btnStats.onclick  = showGazeStats;
-    if (btnCloseStats) btnCloseStats.onclick = closeGazeStats;
-    if (statsModal) statsModal.onclick = e => { if (e.target === statsModal) closeGazeStats(); };
 
     // 문제 내비게이션 버튼 연결
     const btnPrev = document.getElementById('btnPrevQ');
