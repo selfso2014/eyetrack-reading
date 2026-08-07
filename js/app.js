@@ -500,8 +500,23 @@ let _gazeLog = [];
 let _replayActive = false;
 let _replayRAF    = null;
 
+// ── 사용자 답지 선택 기록 ──
+let _userAnswers = {};  // { qIdx: { choice:1~5, t:ms } }
 
-
+// ── 지문 사전 분석 (하드코딩 — 지문 교체 시에만 편집) ──
+const PASSAGE_ANALYSIS = {
+    infoDensity: {
+        'para-0': '고',
+        'para-1': '저',
+        'para-2': '고',
+        'para-3': '중'
+    },
+    sourceParagraph: {
+        'q-1': ['para-3'],
+        'q-2': ['para-2', 'para-3'],
+        'q-3': ['para-2']
+    }
+};
 
 async function initSDK() {
     setPill(els.pillSdk, 'SDK: loading', 'warn');
@@ -823,7 +838,7 @@ function checkAOI(gazeX, gazeY) {
                     const el = document.querySelector(`[data-aoi="${id}"]`);
                     if (el) _removeAOIBorder(el);
                     _aoiBorderOn.delete(id);
-                    logI('aoi', `${id} 테두리 OFF (1.5초 비응시)`);
+                    logI('aoi', `${id} 테두리 OFF`);
                 }
                 delete _aoiLastHitTs[id];
                 delete _aoiDwellAccum[id];
@@ -959,11 +974,12 @@ function showQuestion(qIdx) {
     if (!choiceList) return;
 
     const choiceLis = Array.from(choiceList.querySelectorAll('li'));
-    choiceLis.forEach(li => {
+    choiceLis.forEach((li, idx) => {
         li.onclick = () => {
-            // 기존 선택 해제 후 클릭한 선지 선택
             choiceLis.forEach(el => el.classList.remove('selected'));
             li.classList.add('selected');
+            const elapsed = _sessionStartTime ? Date.now() - _sessionStartTime : 0;
+            _userAnswers[qIdx] = { choice: idx + 1, t: elapsed };
         };
     });
 }
@@ -991,13 +1007,15 @@ function navigateQuestion(delta) {
     showQuestion(newIdx);
 }
 
-/** 세션 종료: 트래킹 AOI 중단, 리플레이 버튼 활성화 */
+/** 세션 종료: 트래킹 AOI 중단, 리플레이/그래프 버튼 활성화 */
 function endSession() {
     _readingActive = false;
     clearAllAOI();
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-    const btnReplay = document.getElementById('btnReplay');
-    if (btnReplay) btnReplay.disabled = false;
+    const btnReplay    = document.getElementById('btnReplay');
+    const btnGazeGraph = document.getElementById('btnGazeGraph');
+    if (btnReplay)    btnReplay.disabled    = false;
+    if (btnGazeGraph) { btnGazeGraph.disabled = false; btnGazeGraph.onclick = showGazeGraph; }
     setStatus('독해 완료! ▶ 리플레이 버튼으로 시선을 확인하세요.');
     logI('reading', `세션 종료. 총 ${_gazeLog.length}프레임 기록.`);
 }
