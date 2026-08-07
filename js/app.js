@@ -216,6 +216,8 @@ function resizeCanvas() {
 }
 
 function renderGaze() {
+    // 리플레이 중에는 gazeCanvas 그리기 중단 (replayDot이 대신 표시)
+    if (_replayActive) return;
     const now = performance.now();
     if (now - _lastRenderMs < CONFIG.RENDER_INTERVAL_MS) return;
     _lastRenderMs = now;
@@ -616,7 +618,9 @@ function onGaze(gazeInfo) {
     if (_readingActive && _sessionStartTime) {
         // trackingState 0(SUCCESS) + 1(LOW_CONFIDENCE) 모두 AOI 체크
         // 실제 eye tracking에서 LOW_CONFIDENCE가 빈번하며, 0만 허용하면 AOI가 거의 탐지 안 됨
-        if ((gazeState.trackingState === 0 || gazeState.trackingState === 1)
+        // 리플레이 중에는 checkAOI 차단 (replay step()이 AOI 테두리 복원 담당)
+        if (!_replayActive &&
+            (gazeState.trackingState === 0 || gazeState.trackingState === 1)
             && gazeState.x != null && gazeState.y != null) {
             checkAOI(gazeState.x, gazeState.y);
         }
@@ -1211,7 +1215,9 @@ function startReplay() {
 
         // 시선 닷 위치 갱신
         if (dot) {
-            if (frame.s === 0 && frame.x != null) {
+            // s===0(SUCCESS) + s===1(LOW_CONF) 모두 dot 표시
+            // (기록 시 LOW_CONF도 포함하므로 재생 시도 동일하게)
+            if (frame.x != null && frame.s <= 1) {
                 dot.style.display = 'block';
                 dot.style.left    = `${frame.x}px`;
                 dot.style.top     = `${frame.y}px`;
