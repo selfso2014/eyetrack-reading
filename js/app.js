@@ -1935,3 +1935,271 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
     const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-F-3. Canvas drawGazeGraph — 12행 렌더링
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, ai) {
+    const LW  = 148;   // 레이블 폭
+    const PAD = 8;
+    const ROWS = [
+        { key: 'timeline',    label: '세부영역',            h: 34 },
+        { key: 'answer',      label: '답지선택 (O/X)',      h: 28 },
+        { key: 'infodensity', label: '정보밀도/근거문단',   h: 28 },
+        { key: 'gazeX',       label: '시선 X축',            h: 60 },
+        { key: 'gazeY',       label: '시선 Y축',            h: 60 },
+        { key: 'fixation',    label: '픽세이션',            h: 44 },
+        { key: 'regression',  label: '리그레션',            h: 30 },
+        { key: 'qptrans',     label: '문제↔지문 이동',      h: 28 },
+        { key: 'response',    label: '반응유형 (AI)',        h: 28 },
+        { key: 'bottleneck',  label: '읽기유창성 병목 (AI)', h: 28 },
+        { key: 'efficiency',  label: '왕복효율성',           h: 28 },
+        { key: 'dwell',       label: '체류시간',             h: 52 },
+    ];
+
+    const CW = Math.max(window.innerWidth * 0.94, 900);
+    const GW = CW - LW - PAD * 2;
+    const CH = ROWS.reduce((s, r) => s + r.h + PAD, 0) + 28;
+
+    canvas.width  = CW;
+    canvas.height = CH;
+    canvas.style.width  = CW + 'px';
+    canvas.style.height = CH + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0c0e1f';
+    ctx.fillRect(0, 0, CW, CH);
+
+    // X 좌표 변환
+    const xT = t => LW + PAD + (t / (totalMs || 1)) * GW;
+
+    // 배경 세로 그리드
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.lineWidth = 1;
+    [.25, .5, .75, 1].forEach(p => {
+        const x = LW + PAD + GW * p;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke();
+    });
+
+    // 시간 눈금
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.font = '10px Inter,sans-serif';
+    ctx.textAlign = 'left';
+    [0, .25, .5, .75, 1].forEach(p => {
+        const sec = Math.floor(totalMs * p / 1000);
+        const lbl = `${String(Math.floor(sec / 60)).padStart(2,'0')}:${String(sec % 60).padStart(2,'0')}`;
+        ctx.fillText(lbl, LW + PAD + GW * p - (p === 1 ? 26 : 0), 14);
+    });
+
+    const AOI_CLR = {
+        'para-0':'#3b82f6','para-1':'#60a5fa','para-2':'#1d4ed8','para-3':'#93c5fd',
+        'q-1':'#f59e0b','q-2':'#d97706','q-3':'#fbbf24'
+    };
+    const RESP_CLR = { '정상인코딩':'#3b82f6','효율스캐닝':'#10b981','인지적멈춤':'#f59e0b','과잉비효율':'#ef4444' };
+    const DENS_CLR = { '고':'#4338ca','중':'#7c3aed','저':'#a78bfa' };
+
+    const drawLbl = (label, y, h) => {
+        ctx.fillStyle = 'rgba(255,255,255,.32)';
+        ctx.font = '10px Inter,sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(label, LW - 5, y + h / 2 + 4);
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = 'rgba(255,255,255,.06)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CW, y); ctx.stroke();
+    };
+
+    let curY = 20;
+
+    ROWS.forEach(row => {
+        const ry = curY + PAD;
+        drawLbl(row.label, ry, row.h);
+
+        // ── 1. 세부영역 타임라인 ──
+        if (row.key === 'timeline') {
+            let prev = null, st = 0;
+            log.forEach(fr => {
+                const aoi = (fr.aois || [])[0] || null;
+                if (aoi !== prev) {
+                    if (prev) {
+                        const x1 = xT(st), x2 = xT(fr.t), w = x2 - x1;
+                        ctx.fillStyle = AOI_CLR[prev] || '#475569';
+                        ctx.fillRect(x1, ry + 2, w - 1, row.h - 4);
+                        if (w > 18) {
+                            ctx.fillStyle = 'rgba(255,255,255,.75)';
+                            ctx.font = '9px Inter,sans-serif';
+                            ctx.fillText(prev.replace('para-','P').replace('q-','Q'), x1 + 3, ry + row.h / 2 + 4);
+                        }
+                    }
+                    prev = aoi; st = fr.t;
+                }
+            });
+        }
+
+        // ── 2. 답지선택 O/X ──
+        else if (row.key === 'answer') {
+            document.querySelectorAll('.question-block').forEach((blk, qi) => {
+                const sel = _userAnswers[qi];
+                if (!sel) return;
+                const correct = parseInt(blk.dataset.answer || '0', 10);
+                const ok = sel.choice === correct;
+                const x  = xT(sel.t);
+                ctx.fillStyle = ok ? '#34d399' : '#ef4444';
+                ctx.font = 'bold 13px Inter,sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(ok ? 'O' : 'X', x - 5, ry + row.h / 2 + 5);
+                ctx.strokeStyle = ok ? 'rgba(52,211,153,.5)' : 'rgba(239,68,68,.5)';
+                ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
+                ctx.setLineDash([]);
+            });
+        }
+
+        // ── 3. 정보밀도/근거문단 (하드코딩) ──
+        else if (row.key === 'infodensity') {
+            const AOIS = ['para-0','para-1','para-2','para-3'];
+            const td   = AOIS.reduce((s, k) => s + (dwell[k] || 0), 0) || 1;
+            let bx = LW + PAD;
+            AOIS.forEach(aoi => {
+                const w = (dwell[aoi] || 0) / td * GW;
+                ctx.fillStyle = DENS_CLR[PASSAGE_ANALYSIS.infoDensity[aoi]] || '#475569';
+                ctx.fillRect(bx, ry + 2, w - 1, row.h - 4);
+                if (w > 14) {
+                    ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = '9px Inter,sans-serif';
+                    ctx.fillText(PASSAGE_ANALYSIS.infoDensity[aoi], bx + 3, ry + row.h / 2 + 4);
+                }
+                bx += w;
+            });
+            // 근거문단 별표
+            [1,2,3].forEach(qi => {
+                const srcs = PASSAGE_ANALYSIS.sourceParagraph[`q-${qi}`] || [];
+                let bx2 = LW + PAD;
+                AOIS.forEach(aoi => {
+                    const w = (dwell[aoi] || 0) / td * GW;
+                    if (srcs.includes(aoi)) {
+                        ctx.fillStyle = '#fbbf24'; ctx.font = '10px Inter,sans-serif';
+                        ctx.fillText(`★Q${qi}`, bx2 + w / 2 - 12, ry + 11);
+                    }
+                    bx2 += w;
+                });
+            });
+        }
+
+        // ── 4/5. 시선 X/Y축 꺾은선 ──
+        else if (row.key === 'gazeX' || row.key === 'gazeY') {
+            const maxV = row.key === 'gazeX' ? (window.screen.width || 1920) : (window.screen.height || 1080);
+            ctx.strokeStyle = row.key === 'gazeX' ? '#60a5fa' : '#a78bfa';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            let started = false;
+            log.forEach(fr => {
+                if (fr.s > 1) return;
+                const x = xT(fr.t);
+                const v = row.key === 'gazeX' ? fr.x : fr.y;
+                const y = ry + row.h - (v / maxV) * (row.h - 4) - 2;
+                if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        // ── 6. 픽세이션 원 ──
+        else if (row.key === 'fixation') {
+            fixations.forEach(f => {
+                const x = xT(f.t);
+                const r = Math.max(3, Math.min(16, f.dur / 70));
+                ctx.beginPath(); ctx.arc(x, ry + row.h / 2, r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(52,211,153,.55)'; ctx.fill();
+                ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1; ctx.stroke();
+            });
+        }
+
+        // ── 7. 리그레션 화살표 ──
+        else if (row.key === 'regression') {
+            regressions.forEach(r => {
+                const x = xT(r.t);
+                ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(x + 8, ry + row.h / 2); ctx.lineTo(x, ry + row.h / 2); ctx.stroke();
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath(); ctx.moveTo(x, ry + row.h / 2);
+                ctx.lineTo(x + 6, ry + row.h / 2 - 4); ctx.lineTo(x + 6, ry + row.h / 2 + 4);
+                ctx.closePath(); ctx.fill();
+            });
+        }
+
+        // ── 8. Q↔P 이동 마커 ──
+        else if (row.key === 'qptrans') {
+            transitions.forEach(tr => {
+                const x = xT(tr.t);
+                ctx.strokeStyle = 'rgba(251,191,36,.6)'; ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = tr.dir === 'Q→P' ? '#34d399' : '#f59e0b';
+                ctx.font = '9px Inter,sans-serif';
+                ctx.fillText(tr.dir === 'Q→P' ? '▼' : '▲', x - 4, ry + (tr.dir === 'Q→P' ? row.h - 2 : 10));
+            });
+        }
+
+        // ── 9. 반응유형 (AI) ──
+        else if (row.key === 'response') {
+            const AOIS = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
+            const td   = AOIS.reduce((s, k) => s + (dwell[k] || 0), 0) || 1;
+            let bx = LW + PAD;
+            AOIS.forEach(aoi => {
+                const w  = (dwell[aoi] || 0) / td * GW;
+                const rt = (ai.responseType || {})[aoi] || '';
+                ctx.fillStyle = RESP_CLR[rt] || '#1e293b';
+                ctx.fillRect(bx, ry + 2, w - 1, row.h - 4);
+                if (w > 28) { ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '8px Inter,sans-serif'; ctx.fillText(rt.slice(0,4), bx + 2, ry + row.h / 2 + 4); }
+                bx += w;
+            });
+        }
+
+        // ── 10. 읽기유창성 병목 (AI) ──
+        else if (row.key === 'bottleneck') {
+            const AOIS = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
+            const td   = AOIS.reduce((s, k) => s + (dwell[k] || 0), 0) || 1;
+            let bx = LW + PAD;
+            AOIS.forEach(aoi => {
+                const w  = (dwell[aoi] || 0) / td * GW;
+                const bn = (ai.fluencyBottleneck || {})[aoi];
+                ctx.fillStyle = bn ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.05)';
+                ctx.fillRect(bx, ry + 2, w - 1, row.h - 4);
+                if (bn && w > 18) { ctx.fillStyle = '#fca5a5'; ctx.font = '8px Inter,sans-serif'; ctx.fillText('병목', bx + 2, ry + row.h / 2 + 4); }
+                bx += w;
+            });
+        }
+
+        // ── 11. 왕복효율성 ──
+        else if (row.key === 'efficiency') {
+            const EFF = { '높음':'rgba(52,211,153,.45)','보통':'rgba(251,191,36,.45)','낮음':'rgba(239,68,68,.45)' };
+            const qW  = GW / numQ;
+            for (let qi = 1; qi <= numQ; qi++) {
+                const k = `q-${qi}`, lvl = efficiency[k] || '보통';
+                const bx = LW + PAD + (qi - 1) * qW;
+                ctx.fillStyle = EFF[lvl];
+                ctx.fillRect(bx, ry + 2, qW - 2, row.h - 4);
+                ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = '10px Inter,sans-serif';
+                ctx.fillText(lvl, bx + qW / 2 - 10, ry + row.h / 2 + 4);
+            }
+        }
+
+        // ── 12. 체류시간 막대 ──
+        else if (row.key === 'dwell') {
+            const AOIS = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
+            const maxD = Math.max(1, ...AOIS.map(k => dwell[k] || 0));
+            const bw   = (GW - AOIS.length * 3) / AOIS.length;
+            AOIS.forEach((aoi, idx) => {
+                const bx  = LW + PAD + idx * (bw + 3);
+                const bh  = Math.max(3, ((dwell[aoi] || 0) / maxD) * (row.h - 14));
+                ctx.fillStyle = AOI_CLR[aoi] || '#475569';
+                ctx.fillRect(bx, ry + row.h - bh - 8, bw, bh);
+                ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '8px Inter,sans-serif';
+                ctx.fillText(aoi.replace('para-','P').replace('q-','Q'), bx + 1, ry + row.h - 1);
+            });
+        }
+
+        curY += row.h + PAD;
+    });
+}
