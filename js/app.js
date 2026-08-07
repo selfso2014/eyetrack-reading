@@ -1170,18 +1170,21 @@ function startReplay() {
     const ovl = _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo);
     document.body.appendChild(ovl);
 
-    const S      = ovl._S;
+    const Sp     = ovl._Sp;      // 지문 스케일
+    const Sq     = ovl._Sq;      // 문제 스케일
     const pWrapW = ovl._pWrapW;
+    const leftOff= ovl._leftOff; // 좌측 여백 (중앙 정렬용)
     const sCanvas = document.getElementById('_rplStaticCanvas');
     const dot    = document.getElementById('_rplDot');
     const fill   = document.getElementById('_rplFill');
     const tLabel = document.getElementById('_rplTimeLabel');
 
     // 정적 레이어: 픽세이션 + 스캔패스 (한 번만 그리기)
-    if (sCanvas) _drawStaticReplay(sCanvas, snap, S, pInfo, qInfo, pWrapW);
+    if (sCanvas) _drawStaticReplay(sCanvas, snap, Sp, Sq, pInfo, qInfo, pWrapW, leftOff);
 
-    let replayIdx = 0;
-    let lastDotX  = null, lastDotY = null;
+    let replayIdx  = 0;
+    let lastDotX   = null, lastDotY = null;
+    let lastQIdx   = -1;
     const wallStart = Date.now();
 
     function step() {
@@ -1193,12 +1196,21 @@ function startReplay() {
 
         const frame = snap[Math.max(0, replayIdx - 1)];
 
+        // 문제 패널: 현재 qIdx 하나만 표시 (visibility 유지로 레이아웃 보존)
+        if (frame.qIdx !== lastQIdx) {
+            lastQIdx = frame.qIdx;
+            document.querySelectorAll('#_rplOvl ._rplQInner .question-block').forEach((b, i) => {
+                b.style.visibility = (i === frame.qIdx) ? 'visible' : 'hidden';
+            });
+        }
+
+        // dot 위치 계산 (지문/문제 스케일 분리)
         if (dot && typeof frame.x === 'number' && typeof frame.y === 'number' && frame.s <= 1) {
             const inP = frame.x >= pInfo.left && frame.x <= pInfo.left + pInfo.w;
             const inQ = !inP && frame.x >= qInfo.left && frame.x <= qInfo.left + qInfo.w;
             if (inP || inQ) {
                 const scrl = inP ? (frame.scrl || 0) : (frame.qscrl || 0);
-                const c = _rplCoord(frame.x, frame.y, scrl, inP, S, pInfo, qInfo, pWrapW);
+                const c = _rplCoord(frame.x, frame.y, scrl, inP, Sp, Sq, pInfo, qInfo, pWrapW, leftOff);
                 lastDotX = c.x; lastDotY = c.y;
             }
         }
@@ -1209,8 +1221,8 @@ function startReplay() {
         }
 
         const pct = Math.min(elapsed / totalMs * 100, 100);
-        if (fill)   fill.style.width      = pct + '%';
-        if (tLabel) tLabel.textContent    = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
+        if (fill)   fill.style.width   = pct + '%';
+        if (tLabel) tLabel.textContent = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
 
         _replayRAF = requestAnimationFrame(step);
     }
@@ -1226,16 +1238,25 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     const FTR_H  = 108;
     const BODY_H = window.innerHeight - HDR_H - FTR_H;
     const BODY_W = window.innerWidth;
-    const pWrapW = Math.floor(BODY_W * 0.57);
-    const qWrapW = BODY_W - pWrapW - 1;
 
-    const Sp = Math.min(BODY_H / Math.max(pInfo.scrollH, 1), pWrapW / Math.max(pInfo.w, 1));
-    const Sq = Math.min(BODY_H / Math.max(qInfo.scrollH, 1), qWrapW / Math.max(qInfo.w, 1));
-    const S  = Math.min(Sp, Sq, 0.9);
+    // 중앙 배치: 전체 너비의 88% (최대 1300px)를 콘텐츠에 할당
+    const TOTAL_W = Math.min(Math.floor(BODY_W * 0.88), 1300);
+    const leftOff = Math.floor((BODY_W - TOTAL_W) / 2);
+    const pWrapW  = Math.floor(TOTAL_W * 0.60);
+    const qWrapW  = TOTAL_W - pWrapW - 1;
+
+    // 지문: 기본 스케일 × 1.15 (살짝 크게, 넘치면 overflow:hidden으로 클립)
+    const Sp_raw = Math.min(BODY_H / Math.max(pInfo.scrollH, 1), pWrapW / Math.max(pInfo.w, 1));
+    const Sp     = Math.min(Sp_raw * 1.15, 0.92);
+
+    // 문제: 1개 블록 기준 스케일 (전체 높이를 문제 수로 나눠 단일 블록 높이 추정)
+    const numQ   = Math.max(1, _TOTAL_QUESTIONS || 3);
+    const Sq_raw = Math.min(BODY_H / Math.max(qInfo.scrollH / numQ, 1), qWrapW / Math.max(qInfo.w, 1));
+    const Sq     = Math.min(Sq_raw * 0.88, 0.92);
 
     const ovl = _el('div', '', 'position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;background:#07091a;overflow:hidden;font-family:Inter,sans-serif');
     ovl.id = '_rplOvl';
-    ovl._S = S; ovl._pWrapW = pWrapW;
+    ovl._Sp = Sp; ovl._Sq = Sq; ovl._pWrapW = pWrapW; ovl._leftOff = leftOff;
 
     // 헤더
     const hdr = _el('div', '', `height:${HDR_H}px;flex-shrink:0;display:flex;align-items:center;padding:0 18px;gap:12px;background:rgba(7,9,26,.97);border-bottom:1px solid rgba(108,123,255,.22)`);
@@ -1252,6 +1273,8 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
         if (d) d.style.display = 'none';
         const f = document.getElementById('_rplFill'); if (f) f.style.width = '100%';
         const tl = document.getElementById('_rplTimeLabel'); if (tl) tl.textContent = fmtMs(totalMs) + ' / ' + fmtMs(totalMs);
+        // 요약 모드: 모든 문제 블록 표시
+        document.querySelectorAll('#_rplOvl ._rplQInner .question-block').forEach(b => { b.style.visibility = 'visible'; });
         btnSm.style.background = 'rgba(108,123,255,.25)';
         btnRt.style.background = 'rgba(251,191,36,.06)';
     };
@@ -1259,20 +1282,25 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     hdr.appendChild(modeWrap);
     ovl.appendChild(hdr);
 
-    // 바디
+    // 바디: position relative (canvas 절대 오버레이용)
     const body = _el('div', '', `height:${BODY_H}px;display:flex;position:relative;overflow:hidden;flex-shrink:0`);
 
-    const pWrap = _buildMinimap(passageEl, S, pWrapW, BODY_H, false);
+    // 좌측 여백 (중앙 정렬)
+    if (leftOff > 0) body.appendChild(_el('div', '', `width:${leftOff}px;flex-shrink:0`));
+
+    const pWrap = _buildMinimap(passageEl, Sp, pWrapW, BODY_H, false, false);
     pWrap.style.cssText += ';position:relative';
-    const pLbl = _el('div', '📖 지문', 'position:absolute;top:5px;left:7px;font:700 9px Inter;color:rgba(108,123,255,.8);z-index:3;pointer-events:none;letter-spacing:.06em;text-shadow:0 1px 3px #07091a');
-    pWrap.appendChild(pLbl);
+    pWrap.appendChild(_el('div', '📖 지문', 'position:absolute;top:5px;left:7px;font:700 9px Inter;color:rgba(108,123,255,.8);z-index:3;pointer-events:none;letter-spacing:.06em;text-shadow:0 1px 3px #07091a'));
 
     const divider = _el('div', '', 'width:1px;background:rgba(108,123,255,.2);flex-shrink:0');
 
-    const qWrap = _buildMinimap(questionEl, S, qWrapW, BODY_H, true);
+    // 문제 미니맵: 모든 블록 표시하되 visibility로 1개만 보임
+    const qWrap = _buildMinimap(questionEl, Sq, qWrapW, BODY_H, true, true);
     qWrap.style.cssText += ';position:relative';
-    const qLbl = _el('div', '📝 문제', 'position:absolute;top:5px;left:7px;font:700 9px Inter;color:rgba(167,139,250,.8);z-index:3;pointer-events:none;letter-spacing:.06em;text-shadow:0 1px 3px #07091a');
-    qWrap.appendChild(qLbl);
+    qWrap.appendChild(_el('div', '📝 문제', 'position:absolute;top:5px;left:7px;font:700 9px Inter;color:rgba(167,139,250,.8);z-index:3;pointer-events:none;letter-spacing:.06em;text-shadow:0 1px 3px #07091a'));
+
+    // 우측 여백
+    if (leftOff > 0) body.appendChild && null; // divider 후 자동
 
     const sCanvas = document.createElement('canvas');
     sCanvas.id = '_rplStaticCanvas';
@@ -1283,6 +1311,7 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     dot.id = '_rplDot';
 
     [pWrap, divider, qWrap, sCanvas, dot].forEach(n => body.appendChild(n));
+    if (leftOff > 0) body.appendChild(_el('div', '', `width:${leftOff}px;flex-shrink:0`));
     ovl.appendChild(body);
 
     ovl.appendChild(_buildReplayFooter(snap, totalMs, FTR_H));
@@ -1290,13 +1319,19 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
 }
 
 // ── 미니맵: innerHTML 복사 + scale 변환 ────────────────────────────────────────
-function _buildMinimap(sourceEl, S, wrapW, wrapH, showAllBlocks) {
+// isQuestion=true: inner에 _rplQInner 클래스 부여 + visibility 관리
+function _buildMinimap(sourceEl, S, wrapW, wrapH, showAllBlocks, isQuestion) {
     const wrap = _el('div', '', `width:${wrapW}px;height:${wrapH}px;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.012)`);
     const inner = _el('div', '', `width:${sourceEl.scrollWidth}px;height:${sourceEl.scrollHeight}px;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;overflow:visible;pointer-events:none`);
+    if (isQuestion) inner.classList.add('_rplQInner');
     inner.innerHTML = sourceEl.innerHTML;
     inner.querySelectorAll('.panel-header').forEach(el => { el.style.position = 'relative'; });
     if (showAllBlocks) {
-        inner.querySelectorAll('.question-block').forEach(el => { el.style.display = 'block'; });
+        inner.querySelectorAll('.question-block').forEach((el, i) => {
+            el.style.display = 'block';
+            // 초기: 첫 번째 문제만 표시, 나머지 숨김 (step()이 동기화)
+            el.style.visibility = (i === 0) ? 'visible' : 'hidden';
+        });
     }
     wrap.appendChild(inner);
     return wrap;
@@ -1344,7 +1379,7 @@ function _buildReplayFooter(snap, totalMs, ftrH) {
 }
 
 // ── 정적 레이어: 픽세이션 + 스캔패스 + 리그레션 ──────────────────────────────
-function _drawStaticReplay(canvas, snap, S, pInfo, qInfo, pWrapW) {
+function _drawStaticReplay(canvas, snap, Sp, Sq, pInfo, qInfo, pWrapW, leftOff) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1365,7 +1400,7 @@ function _drawStaticReplay(canvas, snap, S, pInfo, qInfo, pWrapW) {
         const inP = fi.x >= pInfo.left && fi.x <= pInfo.left + pInfo.w;
         const inQ = !inP && fi.x >= qInfo.left && fi.x <= qInfo.left + qInfo.w;
         if (!inP && !inQ) { prev = null; return; }
-        const c = _rplCoord(fi.x, fi.y, inP ? (fi.scrl||0) : (fi.qscrl||0), inP, S, pInfo, qInfo, pWrapW);
+        const c = _rplCoord(fi.x, fi.y, inP ? (fi.scrl||0) : (fi.qscrl||0), inP, Sp, Sq, pInfo, qInfo, pWrapW, leftOff);
         if (prev) { ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(c.x, c.y); ctx.stroke(); }
         prev = c;
     });
@@ -1376,7 +1411,8 @@ function _drawStaticReplay(canvas, snap, S, pInfo, qInfo, pWrapW) {
         const inP = fi.x >= pInfo.left && fi.x <= pInfo.left + pInfo.w;
         const inQ = !inP && fi.x >= qInfo.left && fi.x <= qInfo.left + qInfo.w;
         if (!inP && !inQ) return;
-        const c   = _rplCoord(fi.x, fi.y, inP ? (fi.scrl||0) : (fi.qscrl||0), inP, S, pInfo, qInfo, pWrapW);
+        const S   = inP ? Sp : Sq;
+        const c   = _rplCoord(fi.x, fi.y, inP ? (fi.scrl||0) : (fi.qscrl||0), inP, Sp, Sq, pInfo, qInfo, pWrapW, leftOff);
         const r   = Math.max(3, Math.min(16, (fi.duration / 500) * 12)) * Math.sqrt(S);
         const col = COLORS[idx % COLORS.length];
         const isR = regIdxSet.has(idx);
@@ -1390,10 +1426,11 @@ function _drawStaticReplay(canvas, snap, S, pInfo, qInfo, pWrapW) {
     });
 }
 
-// ── viewport gaze → overlay canvas 좌표 ──────────────────────────────────────
-function _rplCoord(gx, gy, scrl, inPassage, S, pInfo, qInfo, pWrapW) {
-    if (inPassage) return { x: (gx - pInfo.left) * S, y: (gy - pInfo.top + scrl) * S };
-    return { x: pWrapW + 1 + (gx - qInfo.left) * S, y: (gy - qInfo.top + scrl) * S };
+// ── viewport gaze → overlay canvas 좌표 (Sp/Sq 분리, leftOff 중앙 정렬) ──────
+function _rplCoord(gx, gy, scrl, inPassage, Sp, Sq, pInfo, qInfo, pWrapW, leftOff) {
+    const lo = leftOff || 0;
+    if (inPassage) return { x: lo + (gx - pInfo.left) * Sp, y: (gy - pInfo.top + scrl) * Sp };
+    return { x: lo + pWrapW + 1 + (gx - qInfo.left) * Sq, y: (gy - qInfo.top + scrl) * Sq };
 }
 
 // ── hex → rgba ────────────────────────────────────────────────────────────────
