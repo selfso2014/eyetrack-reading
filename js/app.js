@@ -1239,20 +1239,20 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     const BODY_H = window.innerHeight - HDR_H - FTR_H;
     const BODY_W = window.innerWidth;
 
-    // 중앙 배치: 전체 너비의 88% (최대 1300px)를 콘텐츠에 할당
-    const TOTAL_W = Math.min(Math.floor(BODY_W * 0.88), 1300);
+    // 수능 레이아웃: 화면 거의 전체를 사용 (97%, 최대 1800px)
+    const TOTAL_W = Math.min(Math.floor(BODY_W * 0.97), 1800);
     const leftOff = Math.floor((BODY_W - TOTAL_W) / 2);
-    const pWrapW  = Math.floor(TOTAL_W * 0.60);
+    const pWrapW  = Math.floor(TOTAL_W * 0.62);   // 지문 62%, 더 넓게
     const qWrapW  = TOTAL_W - pWrapW - 1;
 
-    // 지문: 기본 스케일 × 1.15 (살짝 크게, 넘치면 overflow:hidden으로 클립)
+    // 지문: 기본 스케일 × 1.45 (폰트 크게, 높이 초과 시 overflow:hidden)
     const Sp_raw = Math.min(BODY_H / Math.max(pInfo.scrollH, 1), pWrapW / Math.max(pInfo.w, 1));
-    const Sp     = Math.min(Sp_raw * 1.15, 0.92);
+    const Sp     = Math.min(Sp_raw * 1.45, 0.98);
 
-    // 문제: 1개 블록 기준 스케일 (전체 높이를 문제 수로 나눠 단일 블록 높이 추정)
+    // 문제: 1개 블록 기준 스케일 × 1.15 (폰트 크게)
     const numQ   = Math.max(1, _TOTAL_QUESTIONS || 3);
     const Sq_raw = Math.min(BODY_H / Math.max(qInfo.scrollH / numQ, 1), qWrapW / Math.max(qInfo.w, 1));
-    const Sq     = Math.min(Sq_raw * 0.88, 0.92);
+    const Sq     = Math.min(Sq_raw * 1.15, 0.98);
 
     const ovl = _el('div', '', 'position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;background:#07091a;overflow:hidden;font-family:Inter,sans-serif');
     ovl.id = '_rplOvl';
