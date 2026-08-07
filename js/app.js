@@ -884,7 +884,7 @@ function showReadingLayout() {
         btnTimer.classList.add('is-on');
         btnTimer.classList.remove('is-off');
     }
-    if (btnReplay) btnReplay.onclick = startReplay;
+    if (btnReplay) { btnReplay.disabled = false; btnReplay.onclick = startReplay; }
     if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
     if (btnStats)  btnStats.onclick  = showGazeStats;
     if (btnCloseStats) btnCloseStats.onclick = closeGazeStats;
