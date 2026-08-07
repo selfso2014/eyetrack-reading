@@ -1938,31 +1938,37 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
 {"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    let lastErr = 'No models tried';
-    for (const model of MODELS) {
-        const url = `https://generativelanguage.googleapis.com/${model[0]}/models/${model[1]}:generateContent?key=${apiKey}`;
+    // 인증 방식 결정: APIKey(?key=) vs OAuth2(Bearer)
+    const isOAuth = !apiKey.startsWith('AIza');
+    const body    = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
+
+    const lastErrs = [];
+    for (const [ver, model] of MODELS) {
+        // OAuth 토큰: URL에 key 없이, Authorization 헤더 사용
+        const url = isOAuth
+            ? `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent`
+            : `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${apiKey}`;
+        const headers = isOAuth
+            ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }
+            : { 'Content-Type': 'application/json' };
         try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            });
+            const res = await fetch(url, { method: 'POST', headers, body });
             if (!res.ok) {
-                const body = await res.text().catch(() => '');
-                lastErr = `${model[0]}/${model[1]} → HTTP ${res.status}: ${body.slice(0, 100)}`;
-                logW('graph', lastErr);
+                const txt = await res.text().catch(() => '');
+                lastErrs.push(`${ver}/${model} HTTP${res.status}`);
+                logW('graph', lastErrs.at(-1) + ': ' + txt.slice(0, 80));
                 continue;
             }
             const json = await res.json();
             const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            logI('graph', `AI 분석 성공: ${model[0]}/${model[1]}`);
+            logI('graph', `AI 성공: ${ver}/${model} (${isOAuth ? 'OAuth' : 'APIKey'})`);
             return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
-        } catch (fetchErr) {
-            lastErr = `${model[0]}/${model[1]} → ${fetchErr.message}`;
-            logW('graph', lastErr);
+        } catch (e) {
+            lastErrs.push(`${ver}/${model} ${e.message}`);
+            logW('graph', lastErrs.at(-1));
         }
     }
-    throw new Error(lastErr);
+    throw new Error(lastErrs.join(' | '));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
