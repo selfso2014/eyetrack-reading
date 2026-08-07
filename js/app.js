@@ -1502,7 +1502,66 @@ logI('app', 'App loaded. Waiting for user to press Start.');
 // §16. 누적 시선 포인트 오버레이 (스크롤 인식 + 단락별 색상)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── 픽세이션 감지 함수 ──
+// 조건: 첫 점에서 50px 이내 + 지속시간 0.1~0.5초
+function computeFixations(snap) {
+    var fixations = [];
+    var i = 0;
+
+    while (i < snap.length) {
+        var f0 = snap[i];
+        if (f0.x == null || f0.y == null || f0.s > 1) { i++; continue; }
+
+        var group = [f0];
+        var j = i + 1;
+
+        while (j < snap.length) {
+            var fj = snap[j];
+            if (fj.x == null || fj.y == null || fj.s > 1) break;
+
+            // 시간 제약: 500ms 초과 시 break
+            if (fj.t - f0.t > 500) break;
+
+            // 공간 제약: 첫 점에서 50px 이내
+            var dx = fj.x - f0.x;
+            var dy = fj.y - f0.y;
+            if (Math.sqrt(dx * dx + dy * dy) > 50) break;
+
+            group.push(fj);
+            j++;
+        }
+
+        var duration = group[group.length - 1].t - f0.t;
+
+        if (duration >= 100 && group.length >= 2) {
+            // 픽세이션 평균 좌표 계산
+            var sumX = 0, sumY = 0, sumScrl = 0, sumQscrl = 0;
+            for (var k = 0; k < group.length; k++) {
+                sumX     += group[k].x;
+                sumY     += group[k].y;
+                sumScrl  += (group[k].scrl  || 0);
+                sumQscrl += (group[k].qscrl || 0);
+            }
+            var n = group.length;
+            fixations.push({
+                x:        sumX / n,
+                y:        sumY / n,
+                duration: duration,
+                scrl:     sumScrl  / n,
+                qscrl:    sumQscrl / n,
+                qIdx:     f0.qIdx,
+            });
+            i = j;  // 그룹 전체 건너뜀
+        } else {
+            i++;    // 픽세이션 아님, 1칸 이동
+        }
+    }
+
+    return fixations;
+}
+
 function showGazeStats() {
+
     // 토글 OFF
     var existing = document.getElementById('_gazeOverlay');
     if (existing) { closeGazeStats(); return; }
@@ -1618,7 +1677,48 @@ function showGazeStats() {
         }
     }
 
+    // ── 픽세이션 원 그리기 ──
+    // 원시 점 위에 레이어로 덮어 그림 (더 눈에 띄게)
+    var fixations  = computeFixations(snap);
+    var FIX_FILL   = 'rgba(134,239,172,0.50)';  // 연한 초록 fill
+    var FIX_STROKE = 'rgba(74,222,128,0.90)';   // 진한 초록 stroke
+
+    for (var fi = 0; fi < fixations.length; fi++) {
+        var fx = fixations[fi];
+        // 반지름: duration 100ms→8px, 500ms→30px 선형 비례
+        var fRadius = 8 + (Math.min(fx.duration, 500) - 100) / 400 * 22;
+
+        if (fx.x >= passageRect.left && fx.x <= passageRect.right &&
+            fx.y >= passageRect.top  && fx.y <= passageRect.bottom) {
+
+            var fcx = fx.x - passageRect.left;
+            var fcy = fx.y - passageRect.top + fx.scrl;
+            pCtx.beginPath();
+            pCtx.arc(fcx, fcy, fRadius, 0, 6.2832);
+            pCtx.fillStyle   = FIX_FILL;
+            pCtx.fill();
+            pCtx.strokeStyle = FIX_STROKE;
+            pCtx.lineWidth   = 1.5;
+            pCtx.stroke();
+
+        } else if (fx.x >= questRect.left && fx.x <= questRect.right &&
+                   fx.y >= questRect.top  && fx.y <= questRect.bottom) {
+
+            var fqx = fx.x - questRect.left;
+            var fqy = fx.y - questRect.top + fx.qscrl;
+            qCtx.beginPath();
+            qCtx.arc(fqx, fqy, fRadius, 0, 6.2832);
+            qCtx.fillStyle   = FIX_FILL;
+            qCtx.fill();
+            qCtx.strokeStyle = FIX_STROKE;
+            qCtx.lineWidth   = 1.5;
+            qCtx.stroke();
+        }
+    }
+    logI('stats', 'fixations=' + fixations.length + ' p=' + pDrawn + ' q=' + qDrawn);
+
     // ── UI 오버레이 (닫기·정보·범례) ──
+
     var overlay = document.createElement('div');
     overlay.id = '_gazeOverlay';
     overlay.setAttribute('style', 'position:fixed;inset:0;z-index:9000;pointer-events:none');
