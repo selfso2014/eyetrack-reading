@@ -1242,7 +1242,7 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     // 지문 60% / 문제 40%, 폰트: 지문=원본의 1/2, 문제=원본 동일
     const pWrapW  = Math.floor(BODY_W * 0.60);
     const qWrapW  = BODY_W - pWrapW - 1;
-    const Sp      = 0.5;   // 지문: 14.5px × 0.5 = 7.25px
+    const Sp      = 1.5;   // 지문: 14.5px × 1.5 = 21.75px (이전 0.5의 3배)
     const Sq      = 1.0;   // 문제: 14px × 1.0 = 14px (원본)
     const numQ    = Math.max(1, _TOTAL_QUESTIONS || 3);
     const TOTAL_W = pWrapW + 1 + qWrapW;
