@@ -1915,13 +1915,6 @@ async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regression
 }
 
 async function _requestGeminiAnalysis(apiKey, payload) {
-    const MODELS = [
-        ['v1beta','gemini-2.0-flash'],
-        ['v1beta','gemini-1.5-flash'],
-        ['v1',    'gemini-1.5-flash'],
-        ['v1',    'gemini-1.5-pro'],
-        ['v1beta','gemini-1.5-pro'],
-    ];
     const prompt = `수능 독해 인지과학 전문가로서 학생의 시선 데이터를 분석하세요. JSON만 반환하세요.
 
 AOI별 체류시간(ms):${JSON.stringify(payload.dwell)}
@@ -1938,37 +1931,63 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
 {"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    // 인증 방식 결정: APIKey(?key=) vs OAuth2(Bearer)
-    const isOAuth = !apiKey.startsWith('AIza');
-    const body    = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
+    const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
 
-    const lastErrs = [];
-    for (const [ver, model] of MODELS) {
-        // OAuth 토큰: URL에 key 없이, Authorization 헤더 사용
-        const url = isOAuth
-            ? `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent`
-            : `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${apiKey}`;
-        const headers = isOAuth
-            ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }
-            : { 'Content-Type': 'application/json' };
+    // 두 가지 인증 방식을 모두 시도
+    const authModes = [
+        { label: 'APIKey', url: v => `https://generativelanguage.googleapis.com/${v}`, headers: v => ({ 'Content-Type': 'application/json' }), qs: `?key=${apiKey}` },
+        { label: 'Bearer', url: v => `https://generativelanguage.googleapis.com/${v}`, headers: v => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }), qs: '' },
+    ];
+
+    const FALLBACK_MODELS = [
+        ['v1beta','gemini-2.0-flash'], ['v1beta','gemini-1.5-flash'],
+        ['v1','gemini-1.5-flash'],     ['v1','gemini-1.5-pro'],
+    ];
+
+    const errs = [];
+
+    for (const auth of authModes) {
+        // ① 모델 목록 자동 탐지
+        let candidates = [];
         try {
-            const res = await fetch(url, { method: 'POST', headers, body });
-            if (!res.ok) {
-                const txt = await res.text().catch(() => '');
-                lastErrs.push(`${ver}/${model} HTTP${res.status}`);
-                logW('graph', lastErrs.at(-1) + ': ' + txt.slice(0, 80));
-                continue;
+            const listRes = await fetch(
+                `${auth.url('v1beta')}/models${auth.qs}`,
+                { headers: auth.headers() }
+            );
+            if (listRes.ok) {
+                const listJson = await listRes.json();
+                candidates = (listJson.models || [])
+                    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+                    .map(m => ['v1beta', m.name.replace('models/', '')]);
+                logI('graph', `[${auth.label}] 모델 탐지 성공: ${candidates.map(c=>c[1]).join(', ')}`);
             }
-            const json = await res.json();
-            const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            logI('graph', `AI 성공: ${ver}/${model} (${isOAuth ? 'OAuth' : 'APIKey'})`);
-            return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
-        } catch (e) {
-            lastErrs.push(`${ver}/${model} ${e.message}`);
-            logW('graph', lastErrs.at(-1));
+        } catch (_) {}
+
+        // 탐지 실패 시 하드코딩 폴백
+        if (!candidates.length) candidates = FALLBACK_MODELS;
+
+        // ② 탐지된 모델로 순서대로 호출
+        for (const [ver, model] of candidates) {
+            const url = `${auth.url(ver)}/models/${model}:generateContent${auth.qs}`;
+            try {
+                const res = await fetch(url, { method: 'POST', headers: auth.headers(), body });
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    errs.push(`[${auth.label}] ${ver}/${model} HTTP${res.status}`);
+                    logW('graph', errs.at(-1) + ' ' + txt.slice(0,60));
+                    continue;
+                }
+                const json = await res.json();
+                const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                logI('graph', `AI 성공: [${auth.label}] ${ver}/${model}`);
+                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+            } catch (e) {
+                errs.push(`[${auth.label}] ${ver}/${model} ${e.message}`);
+                logW('graph', errs.at(-1));
+            }
         }
     }
-    throw new Error(lastErrs.join(' | '));
+    throw new Error(errs.slice(-4).join(' | '));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
