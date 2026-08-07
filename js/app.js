@@ -844,7 +844,7 @@ function showReadingLayout() {
     _gazeLog          = [];
     _gazeVisible      = true;
     _aoiVisible       = true;
-    _timerVisible     = false;
+    _timerVisible     = true;   // [변경] 타이머 무조건 ON
     _currentQIdx      = 0;
 
     // HUD 숨기기 (독해 모드 중)
@@ -852,6 +852,19 @@ function showReadingLayout() {
 
     // 첫 번째 문제 표시
     showQuestion(0);
+
+    // ── 타이머 자동 시작 ──
+    const timerEl = document.getElementById('readingTimer');
+    if (timerEl) timerEl.classList.remove('hidden');
+    if (_timerInterval) clearInterval(_timerInterval);
+    _timerInterval = setInterval(() => {
+        if (!_sessionStartTime) return;
+        const sec = Math.floor((Date.now() - _sessionStartTime) / 1000);
+        const m   = String(Math.floor(sec / 60)).padStart(2, '0');
+        const s   = String(sec % 60).padStart(2, '0');
+        const el  = document.getElementById('readingTimer');
+        if (el) el.textContent = `${m}:${s}`;
+    }, 1000);
 
     // 툴바 버튼 연결
     const btnGaze  = document.getElementById('btnToggleGaze');
@@ -865,10 +878,15 @@ function showReadingLayout() {
 
     if (btnGaze)   btnGaze.onclick   = toggleGazeVisibility;
     if (btnAOI)    btnAOI.onclick    = toggleAOIVisibility;
-    if (btnTimer)  btnTimer.onclick  = toggleTimer;
+    // [변경] 타이머 토글 버튼: 항상 ON이므로 비활성화
+    if (btnTimer) {
+        btnTimer.disabled = true;
+        btnTimer.classList.add('is-on');
+        btnTimer.classList.remove('is-off');
+    }
     if (btnReplay) btnReplay.onclick = startReplay;
     if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
-    if (btnStats)  btnStats.onclick  = showGazeStats;       // [FIX] DOMContentLoaded 대신 여기서 연결
+    if (btnStats)  btnStats.onclick  = showGazeStats;
     if (btnCloseStats) btnCloseStats.onclick = closeGazeStats;
     if (statsModal) statsModal.onclick = e => { if (e.target === statsModal) closeGazeStats(); };
 
@@ -1113,6 +1131,10 @@ function startReplay() {
     }
     if (_replayActive) { stopReplay(); return; }
 
+    // ── 버튼 누른 시점의 로그 스냅샷 ──
+    const snap    = _gazeLog.slice();
+    const totalMs = snap[snap.length - 1].t;
+
     _replayActive = true;
     const btn = document.getElementById('btnReplay');
     if (btn) { btn.textContent = '■ 중단'; btn.classList.add('replay-active'); }
@@ -1131,9 +1153,46 @@ function startReplay() {
         ...document.querySelectorAll('.question-block'),
     ];
 
+    // ── 하단 Progress Bar 생성 ──
+    const bar = document.createElement('div');
+    bar.id = '_replayProgressBar';
+    bar.style.cssText = [
+        'position:fixed', 'bottom:0', 'left:0', 'right:0', 'height:44px',
+        'background:rgba(7,9,26,0.96)', 'border-top:1px solid rgba(108,123,255,0.25)',
+        'display:flex', 'align-items:center', 'gap:10px', 'padding:0 16px',
+        'z-index:8000', 'backdrop-filter:blur(10px)'
+    ].join(';');
+
+    const timeLabel = document.createElement('span');
+    timeLabel.style.cssText = 'font:12px/1 monospace;color:#94a3b8;min-width:110px;flex-shrink:0';
+    timeLabel.textContent = '0:00 / ' + fmtMs(totalMs);
+
+    const track = document.createElement('div');
+    track.style.cssText = [
+        'flex:1', 'height:6px', 'background:rgba(255,255,255,0.08)',
+        'border-radius:999px', 'overflow:hidden', 'cursor:pointer'
+    ].join(';');
+
+    const fill = document.createElement('div');
+    fill.style.cssText = [
+        'height:100%', 'width:0%',
+        'background:linear-gradient(90deg,#6c7bff,#a78bfa)',
+        'border-radius:999px',
+        'transition:width 0.1s linear'
+    ].join(';');
+    track.appendChild(fill);
+
+    const totalLabel = document.createElement('span');
+    totalLabel.style.cssText = 'font:12px/1 monospace;color:#475569;flex-shrink:0';
+    totalLabel.textContent = fmtMs(totalMs);
+
+    bar.appendChild(timeLabel);
+    bar.appendChild(track);
+    bar.appendChild(totalLabel);
+    document.body.appendChild(bar);
+
     let replayIdx = 0;
     const wallStart = Date.now();
-    const totalMs   = _gazeLog[_gazeLog.length - 1].t;
 
     setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs / 1000)}초)...`);
 
@@ -1142,13 +1201,13 @@ function startReplay() {
         const elapsed = Date.now() - wallStart;
 
         // elapsed 시각까지의 프레임 소비
-        while (replayIdx < _gazeLog.length && _gazeLog[replayIdx].t <= elapsed) {
+        while (replayIdx < snap.length && snap[replayIdx].t <= elapsed) {
             replayIdx++;
         }
 
-        if (replayIdx >= _gazeLog.length) { stopReplay(); return; }
+        if (replayIdx >= snap.length) { stopReplay(); return; }
 
-        const frame = _gazeLog[Math.max(0, replayIdx - 1)];
+        const frame = snap[Math.max(0, replayIdx - 1)];
 
         // 시선 닷 위치 갱신
         if (dot) {
@@ -1172,11 +1231,22 @@ function startReplay() {
             el.classList.toggle('aoi-active', active);
         });
 
+        // ── Progress Bar 업데이트 ──
+        const pct = Math.min(elapsed / totalMs * 100, 100);
+        fill.style.width      = pct + '%';
+        timeLabel.textContent = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
+
         _replayRAF = requestAnimationFrame(step);
     }
 
     _replayRAF = requestAnimationFrame(step);
-    logI('replay', `리플레이 시작: ${_gazeLog.length}프레임, ${Math.ceil(totalMs/1000)}초`);
+    logI('replay', `리플레이 시작: ${snap.length}프레임, ${Math.ceil(totalMs/1000)}초`);
+}
+
+// ms → 'M:SS' 포맷
+function fmtMs(ms) {
+    const s = Math.floor(ms / 1000);
+    return String(Math.floor(s / 60)) + ':' + String(s % 60).padStart(2, '0');
 }
 
 function stopReplay() {
@@ -1185,6 +1255,10 @@ function stopReplay() {
 
     const dot = document.getElementById('replayDot');
     if (dot) dot.style.display = 'none';
+
+    // ── Progress Bar 제거 ──
+    const bar = document.getElementById('_replayProgressBar');
+    if (bar) bar.remove();
 
     const btn = document.getElementById('btnReplay');
     if (btn) { btn.textContent = '▶ 리플레이'; btn.classList.remove('replay-active'); }
