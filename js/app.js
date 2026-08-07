@@ -1967,14 +1967,19 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
     const errs = [];
     for (const model of candidates) {
         setMsg(`AI 분석 중... (${model})`);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        // ?key= 방식과 x-goog-api-key 헤더 방식을 모두 시도
+        const urlA = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const urlB = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        let res;
+        try { res = await fetchT(urlA, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reqBody }); }
+        catch (_) {}
+        if (!res || !res.ok) {
+            try { res = await fetchT(urlB, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: reqBody }); }
+            catch (_) {}
+        }
         try {
-            const res = await fetchT(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: reqBody
-            });
-            if (!res.ok) {
+            if (!res) throw new Error('no response');
+            if (!res || !res.ok) {
                 const txt = await res.text().catch(() => '');
                 errs.push(`${model} HTTP${res.status}`);
                 logW('graph', errs.at(-1) + ' ' + txt.slice(0, 60));
