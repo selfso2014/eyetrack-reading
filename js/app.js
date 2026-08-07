@@ -1560,7 +1560,102 @@ function computeFixations(snap) {
     return fixations;
 }
 
+// ── 리그레션 분류 함수 ──
+// 연속 픽세이션 쌍(Fᵢ→Fᵢ₊₁) 사이의 사케이드를 5가지 유형으로 분류
+// 파라미터 (content-relative 좌표 기준):
+//   EPS_Y=15px (줄 구분), EPS_X_LARGE=150px (리턴 스윕), EPS_WORD=50px (단어 너비), LINE_H=29px
+function classifyRegressions(fixations, passageRect, questRect) {
+    var EPS_Y       = 15;   // ε_y: 줄 구분 임계값
+    var EPS_X_LARGE = 150;  // ε_x,large: 리턴 스윕 판별
+    var EPS_WORD    = 50;   // ε_word: 단어 내 미시 역행 판별
+    var LINE_H      = 29;   // L: 줄 높이 (14.5px × 2)
+
+    var regressions = [];
+
+    for (var i = 0; i < fixations.length - 1; i++) {
+        var fi = fixations[i];
+        var fj = fixations[i + 1];
+
+        // 각 픽세이션이 어느 패널에 속하는지 판단
+        var fi_inP = fi.x >= passageRect.left && fi.x <= passageRect.right &&
+                     fi.y >= passageRect.top  && fi.y <= passageRect.bottom;
+        var fj_inP = fj.x >= passageRect.left && fj.x <= passageRect.right &&
+                     fj.y >= passageRect.top  && fj.y <= passageRect.bottom;
+        var fi_inQ = fi.x >= questRect.left && fi.x <= questRect.right &&
+                     fi.y >= questRect.top  && fi.y <= questRect.bottom;
+        var fj_inQ = fj.x >= questRect.left && fj.x <= questRect.right &&
+                     fj.y >= questRect.top  && fj.y <= questRect.bottom;
+
+        // 같은 패널 내에서만 리그레션 감지 (패널 간 이동은 제외)
+        var panel = '';
+        if (fi_inP && fj_inP)       panel = 'passage';
+        else if (fi_inQ && fj_inQ)  panel = 'question';
+        else                        continue;
+
+        // 콘텐츠 상대 좌표 (스크롤 보정 포함)
+        var cx_i, cy_i, cx_j, cy_j;
+        if (panel === 'passage') {
+            cx_i = fi.x - passageRect.left;
+            cy_i = fi.y - passageRect.top + (fi.scrl  || 0);
+            cx_j = fj.x - passageRect.left;
+            cy_j = fj.y - passageRect.top + (fj.scrl  || 0);
+        } else {
+            cx_i = fi.x - questRect.left;
+            cy_i = fi.y - questRect.top  + (fi.qscrl || 0);
+            cx_j = fj.x - questRect.left;
+            cy_j = fj.y - questRect.top  + (fj.qscrl || 0);
+        }
+
+        var dx = cx_j - cx_i;
+        var dy = cy_j - cy_i;
+
+        // 리그레션 유형 분류 (우선순위: 4 > 3 > 2 > 5 > 1)
+        var type = 0;
+        if      (dy < -2 * LINE_H)                                           type = 4; // 대규모 역행 (2줄 이상 위)
+        else if (dx < -EPS_X_LARGE && dy < -EPS_Y && dy > -2 * LINE_H)      type = 3; // 리턴 스윕 실패
+        else if (dy < -EPS_Y)                                                type = 2; // 이전 줄 역행
+        else if (Math.abs(dy) < EPS_Y && dx < 0 && dx > -EPS_WORD)          type = 5; // 단어 내 미시 역행
+        else if (Math.abs(dy) < EPS_Y && dx < 0)                            type = 1; // 동일 줄 역방향
+
+        if (type > 0) {
+            regressions.push({
+                from:  { x: cx_i, y: cy_i },
+                to:    { x: cx_j, y: cy_j },
+                type:  type,
+                panel: panel,
+            });
+        }
+    }
+    return regressions;
+}
+
+// ── 화살표 그리기 헬퍼 ──
+function drawArrow(ctx, x1, y1, x2, y2, color, lineW) {
+    var headLen = 7;
+    var angle   = Math.atan2(y2 - y1, x2 - x1);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = color;
+    ctx.lineWidth   = lineW || 1.5;
+    // 선
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    // 화살촉
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6),
+               y2 - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6),
+               y2 - headLen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
 function showGazeStats() {
+
 
     // 토글 OFF
     var existing = document.getElementById('_gazeOverlay');
@@ -1736,8 +1831,29 @@ function showGazeStats() {
     }
     logI('stats', 'fixations=' + fixations.length + ' p=' + pDrawn + ' q=' + qDrawn);
 
+    // ── 리그레션 화살표 그리기 ──
+    // 유형별 색상: 1=주황, 2=빨강, 3=보라, 4=진빨강, 5=노랑
+    var REG_COLOR = {
+        1: 'rgba(251,146,60,0.85)',   // 동일 줄 역방향
+        2: 'rgba(248,113,113,0.85)',  // 이전 줄 역행
+        3: 'rgba(167,139,250,0.85)', // 리턴 스윕 실패
+        4: 'rgba(220,38,38,0.95)',   // 대규모 역행
+        5: 'rgba(253,224,71,0.80)',  // 단어 내 미시 역행
+    };
+    var regressions = classifyRegressions(fixations, passageRect, questRect);
+    for (var ri = 0; ri < regressions.length; ri++) {
+        var rg   = regressions[ri];
+        var rCol = REG_COLOR[rg.type] || 'rgba(255,255,255,0.6)';
+        if (rg.panel === 'passage') {
+            drawArrow(pCtx, rg.from.x, rg.from.y, rg.to.x, rg.to.y, rCol, 1.5);
+        } else {
+            drawArrow(qCtx, rg.from.x, rg.from.y, rg.to.x, rg.to.y, rCol, 1.5);
+        }
+    }
+    logI('stats', 'regressions=' + regressions.length);
 
     // ── UI 오버레이 (닫기·정보·범례) ──
+
 
     var overlay = document.createElement('div');
     overlay.id = '_gazeOverlay';
