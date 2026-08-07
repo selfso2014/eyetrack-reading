@@ -628,6 +628,8 @@ function onGaze(gazeInfo) {
             s:    gazeState.trackingState,
             aois: [..._aoiBorderOn],
             qIdx: _currentQIdx,
+            scrl: document.getElementById('passagePanel')?.scrollTop   || 0,
+            qscrl: document.getElementById('questionViewport')?.scrollTop || 0,
         });
     }
 }
@@ -1508,31 +1510,53 @@ function showGazeStats() {
     var snap = _gazeLog.slice();
 
     // ── 패널 획득 ──
-    var passagePanel   = document.getElementById('passagePanel');
-    var questionsPanel = document.getElementById('questionsPanel');
-    if (!passagePanel || !questionsPanel) { alert('패널 없음'); return; }
+    var passagePanel  = document.getElementById('passagePanel');
+    var questViewport = document.getElementById('questionViewport');  // 실제 스크롤 컨테이너
+    if (!passagePanel || !questViewport) { alert('패널 없음'); return; }
 
     var passageRect = passagePanel.getBoundingClientRect();
-    var questRect   = questionsPanel.getBoundingClientRect();
+    var questRect   = questViewport.getBoundingClientRect();
 
-    // ── 단락 위치 수집 (content-relative: offsetTop/offsetHeight) ──
+    // ── [Bug3 Fix] position:relative를 paraRanges 수집 전에 설정 ──
+    //    el.offsetTop은 offsetParent 기준이므로 passagePanel이 relative여야 올바른 값이 나옴
+    passagePanel.style.position = 'relative';
+
+    // ── 단락 위치 수집 (passagePanel 내부 기준 content-relative) ──
     var paraEls = document.querySelectorAll('.passage-para');
     var paraRanges = [];
     paraEls.forEach(function (el, idx) {
         paraRanges.push({
-            top:    el.offsetTop,
+            top:    el.offsetTop,                     // passagePanel 기준
             bottom: el.offsetTop + el.offsetHeight,
             idx:    idx,
         });
     });
 
-    // 단락별 색상
+    // ── [Bug4 Fix] 문제 블록 위치 수집 ──
+    //    question-block은 display:none/block 전환이라 offsetTop을 읽으려면
+    //    일시적으로 모두 표시(block)했다가 복원.
+    questViewport.style.position = 'relative';
+    var qBlocks = Array.from(document.querySelectorAll('.question-block'));
+    var savedDisplay = qBlocks.map(function (b) { return b.style.display; });
+    qBlocks.forEach(function (b) { b.style.display = 'block'; });
+    var qBlockRanges = [];
+    qBlocks.forEach(function (el, idx) {
+        qBlockRanges.push({
+            top:    el.offsetTop,
+            bottom: el.offsetTop + el.offsetHeight,
+            idx:    idx,
+        });
+    });
+    // 표시 복원
+    qBlocks.forEach(function (b, i) { b.style.display = savedDisplay[i]; });
+
+    // 색상 팔레트
     var PARA_RGBA  = ['rgba(52,211,153,0.70)','rgba(251,191,36,0.70)','rgba(96,165,250,0.70)','rgba(244,114,182,0.70)'];
     var PARA_SOLID = ['#34d399','#fbbf24','#60a5fa','#f472b6'];
     var DFLT_RGBA  = 'rgba(156,163,175,0.40)';
+    var Q_RGBA     = ['rgba(52,211,153,0.70)','rgba(251,191,36,0.70)','rgba(96,165,250,0.70)'];
 
-    // ── 지문 캔버스 (passagePanel 내부, 스크롤과 함께 움직임) ──
-    passagePanel.style.position = 'relative';
+    // ── 지문 캔버스 (passagePanel 내부, 전체 스크롤 높이) ──
     var pc = document.createElement('canvas');
     pc.id = '_passageGazeCanvas';
     pc.width  = Math.floor(passagePanel.clientWidth);
@@ -1541,17 +1565,14 @@ function showGazeStats() {
     passagePanel.appendChild(pc);
     var pCtx = pc.getContext('2d');
 
-    // ── 문제 캔버스 (questionsPanel 내부) ──
-    questionsPanel.style.position = 'relative';
+    // ── 문제 캔버스 (questionViewport 내부, 전체 스크롤 높이) ──
     var qc = document.createElement('canvas');
     qc.id = '_questionsGazeCanvas';
-    qc.width  = Math.floor(questionsPanel.clientWidth);
-    qc.height = Math.floor(questionsPanel.scrollHeight);
+    qc.width  = Math.floor(questViewport.clientWidth);
+    qc.height = Math.floor(questViewport.scrollHeight);
     qc.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:100';
-    questionsPanel.appendChild(qc);
+    questViewport.appendChild(qc);
     var qCtx = qc.getContext('2d');
-
-    var Q_RGBA = ['rgba(52,211,153,0.70)','rgba(251,191,36,0.70)','rgba(96,165,250,0.70)'];
 
     var pDrawn = 0, qDrawn = 0;
 
@@ -1559,14 +1580,15 @@ function showGazeStats() {
         var f = snap[i];
         if (f.x == null || f.y == null || f.s > 1) continue;
 
-        var scrl = f.scrl || 0;   // 로그 시점의 스크롤
-
+        // ── 지문 패널 ──
         if (f.x >= passageRect.left && f.x <= passageRect.right &&
             f.y >= passageRect.top  && f.y <= passageRect.bottom) {
 
-            var cx = f.x - passageRect.left;
-            var cy = f.y - passageRect.top + scrl;
+            var scrl = f.scrl || 0;             // 로그 시점 passagePanel.scrollTop
+            var cx   = f.x - passageRect.left;
+            var cy   = f.y - passageRect.top + scrl;   // 콘텐츠 상대 좌표
 
+            // 단락 범위로 색상 결정
             var color = DFLT_RGBA;
             for (var pi = 0; pi < paraRanges.length; pi++) {
                 if (cy >= paraRanges[pi].top && cy <= paraRanges[pi].bottom) {
@@ -1580,11 +1602,14 @@ function showGazeStats() {
             pCtx.fill();
             pDrawn++;
 
+        // ── 문제 패널 (questionViewport 기준) ──
         } else if (f.x >= questRect.left && f.x <= questRect.right &&
                    f.y >= questRect.top  && f.y <= questRect.bottom) {
 
-            var qx = f.x - questRect.left;
-            var qy = f.y - questRect.top;
+            var qscrl = f.qscrl || 0;           // 로그 시점 questionViewport.scrollTop
+            var qx    = f.x - questRect.left;
+            var qy    = f.y - questRect.top + qscrl;   // 콘텐츠 상대 좌표
+
             qCtx.beginPath();
             qCtx.arc(qx, qy, 3, 0, 6.2832);
             qCtx.fillStyle = Q_RGBA[f.qIdx] || DFLT_RGBA;
@@ -1593,7 +1618,7 @@ function showGazeStats() {
         }
     }
 
-    // ── UI 오버레이 ──
+    // ── UI 오버레이 (닫기·정보·범례) ──
     var overlay = document.createElement('div');
     overlay.id = '_gazeOverlay';
     overlay.setAttribute('style', 'position:fixed;inset:0;z-index:9000;pointer-events:none');
@@ -1646,4 +1671,3 @@ function closeGazeStats() {
     var qc2 = document.getElementById('_questionsGazeCanvas');
     if (qc2) qc2.remove();
 }
-
