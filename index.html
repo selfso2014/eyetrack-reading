@@ -82,6 +82,7 @@
         <button id="btnToggleAOI"   class="toggle-btn is-on"  title="관심영역 테두리 표시/숨기기">🟩 영역</button>
         <button id="btnToggleTimer" class="toggle-btn is-off" title="타이머 표시/숨기기">⏱ 타이머</button>
         <button id="btnReplay"      class="toggle-btn replay-btn" title="시선 리플레이" disabled>▶ 리플레이</button>
+        <button id="btnGazeGraph"   class="toggle-btn graph-btn" title="시선그래프 분석" disabled>📈 시선그래프</button>
         <button id="btnViewStats"   class="toggle-btn stats-btn" onclick="showGazeStats()" title="누적 시선 통계 보기">📊 통계</button>
         <button id="btnToggleDebug" class="toggle-btn is-on"  title="AOI 디버그 HUD 표시/숨기기">🐛 DBG</button>
       </div>
@@ -204,6 +205,40 @@
 
   <!-- Replay gaze dot -->
   <div id="replayDot"></div>
+
+  <!-- ═══ API Key Modal ═══ -->
+  <div id="apiKeyModal" class="gaze-modal-overlay hidden">
+    <div class="gaze-modal-box" style="max-width:420px">
+      <div class="gaze-modal-hdr">
+        <span>🔑 Gemini API Key</span>
+        <button class="gaze-modal-close" onclick="document.getElementById('apiKeyModal').classList.add('hidden')">✕</button>
+      </div>
+      <p style="font:13px/1.6 Inter,sans-serif;color:#94a3b8;margin:0 0 14px">
+        AI 분석(반응유형 · 읽기유창성)에 Gemini API Key가 필요합니다.<br>
+        입력한 키는 이 기기의 localStorage에만 저장됩니다.
+      </p>
+      <input id="apiKeyInput" type="password" placeholder="AIza..." autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1.5px solid rgba(108,123,255,.4);background:rgba(255,255,255,.05);color:#e2e8f0;font:13px Inter,sans-serif;outline:none">
+      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
+        <button onclick="document.getElementById('apiKeyModal').classList.add('hidden')" style="padding:7px 18px;border-radius:20px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#94a3b8;cursor:pointer;font:600 12px Inter">취소</button>
+        <button id="btnSaveApiKey" style="padding:7px 18px;border-radius:20px;border:none;background:linear-gradient(135deg,#6c7bff,#a78bfa);color:#fff;cursor:pointer;font:600 12px Inter">저장 후 분석</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Gaze Graph Modal ═══ -->
+  <div id="gazeGraphModal" class="gaze-modal-overlay hidden">
+    <div class="gaze-modal-box" style="max-width:96vw;width:96vw;padding:0">
+      <div class="gaze-modal-hdr" style="padding:12px 18px">
+        <span>📈 시선 그래프 분석</span>
+        <span id="gazeGraphStatus" style="font:12px Inter,sans-serif;color:#94a3b8;margin-left:12px"></span>
+        <button class="gaze-modal-close" onclick="closeGazeGraph()" style="margin-left:auto">✕ 닫기</button>
+      </div>
+      <div style="overflow:auto;max-height:84vh">
+        <canvas id="gazeGraphCanvas"></canvas>
+      </div>
+    </div>
+  </div>
 
   <!-- ═══ App Script ═══ -->
   <script src="js/app.js?v=20260807a"></script>
