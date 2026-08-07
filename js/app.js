@@ -1931,63 +1931,66 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
 {"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
+    const reqBody = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
+    const statusEl = document.getElementById('gazeGraphStatus');
+    const setMsg = m => { if (statusEl) statusEl.textContent = m; };
 
-    // 두 가지 인증 방식을 모두 시도
-    const authModes = [
-        { label: 'APIKey', url: v => `https://generativelanguage.googleapis.com/${v}`, headers: v => ({ 'Content-Type': 'application/json' }), qs: `?key=${apiKey}` },
-        { label: 'Bearer', url: v => `https://generativelanguage.googleapis.com/${v}`, headers: v => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }), qs: '' },
-    ];
+    // 타임아웃 있는 fetch (8초)
+    const fetchT = (url, opts) => {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 8000);
+        return fetch(url, { ...opts, signal: ctrl.signal })
+            .finally(() => clearTimeout(tid));
+    };
 
-    const FALLBACK_MODELS = [
-        ['v1beta','gemini-2.0-flash'], ['v1beta','gemini-1.5-flash'],
-        ['v1','gemini-1.5-flash'],     ['v1','gemini-1.5-pro'],
-    ];
+    // ① 모델 목록 자동 탐지 (APIKey 방식)
+    setMsg('사용 가능한 모델 탐지 중...');
+    let candidates = [];
+    try {
+        const lr = await fetchT(
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+        if (lr.ok) {
+            const lj = await lr.json();
+            candidates = (lj.models || [])
+                .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+                .map(m => m.name.replace('models/', ''))
+                .slice(0, 5);   // 상위 5개만
+            logI('graph', '탐지된 모델: ' + candidates.join(', '));
+        }
+    } catch (e) { logW('graph', '모델 탐지 실패: ' + e.message); }
 
+    if (!candidates.length) candidates = ['gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro'];
+
+    // ② 탐지된 모델로 순서대로 generateContent 시도
     const errs = [];
-
-    for (const auth of authModes) {
-        // ① 모델 목록 자동 탐지
-        let candidates = [];
+    for (const model of candidates) {
+        setMsg(`AI 분석 중... (${model})`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {
-            const listRes = await fetch(
-                `${auth.url('v1beta')}/models${auth.qs}`,
-                { headers: auth.headers() }
-            );
-            if (listRes.ok) {
-                const listJson = await listRes.json();
-                candidates = (listJson.models || [])
-                    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-                    .map(m => ['v1beta', m.name.replace('models/', '')]);
-                logI('graph', `[${auth.label}] 모델 탐지 성공: ${candidates.map(c=>c[1]).join(', ')}`);
+            const res = await fetchT(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: reqBody
+            });
+            if (!res.ok) {
+                const txt = await res.text().catch(() => '');
+                errs.push(`${model} HTTP${res.status}`);
+                logW('graph', errs.at(-1) + ' ' + txt.slice(0, 60));
+                continue;
             }
-        } catch (_) {}
-
-        // 탐지 실패 시 하드코딩 폴백
-        if (!candidates.length) candidates = FALLBACK_MODELS;
-
-        // ② 탐지된 모델로 순서대로 호출
-        for (const [ver, model] of candidates) {
-            const url = `${auth.url(ver)}/models/${model}:generateContent${auth.qs}`;
-            try {
-                const res = await fetch(url, { method: 'POST', headers: auth.headers(), body });
-                if (!res.ok) {
-                    const txt = await res.text().catch(() => '');
-                    errs.push(`[${auth.label}] ${ver}/${model} HTTP${res.status}`);
-                    logW('graph', errs.at(-1) + ' ' + txt.slice(0,60));
-                    continue;
-                }
-                const json = await res.json();
-                const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                logI('graph', `AI 성공: [${auth.label}] ${ver}/${model}`);
-                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
-            } catch (e) {
-                errs.push(`[${auth.label}] ${ver}/${model} ${e.message}`);
-                logW('graph', errs.at(-1));
-            }
+            const json = await res.json();
+            const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+            logI('graph', 'AI 성공: ' + model);
+            setMsg('');
+            return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+        } catch (e) {
+            errs.push(`${model}: ${e.message}`);
+            logW('graph', errs.at(-1));
         }
     }
-    throw new Error(errs.slice(-4).join(' | '));
+    throw new Error(errs.join(' | '));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
