@@ -1915,7 +1915,13 @@ async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regression
 }
 
 async function _requestGeminiAnalysis(apiKey, payload) {
-    const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro'];
+    const MODELS = [
+        ['v1beta','gemini-2.0-flash'],
+        ['v1beta','gemini-1.5-flash'],
+        ['v1',    'gemini-1.5-flash'],
+        ['v1',    'gemini-1.5-pro'],
+        ['v1beta','gemini-1.5-pro'],
+    ];
     const prompt = `수능 독해 인지과학 전문가로서 학생의 시선 데이터를 분석하세요. JSON만 반환하세요.
 
 AOI별 체류시간(ms):${JSON.stringify(payload.dwell)}
@@ -1934,7 +1940,7 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
     let lastErr = 'No models tried';
     for (const model of MODELS) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/${model[0]}/models/${model[1]}:generateContent?key=${apiKey}`;
         try {
             const res = await fetch(url, {
                 method: 'POST',
@@ -1943,16 +1949,16 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
             });
             if (!res.ok) {
                 const body = await res.text().catch(() => '');
-                lastErr = `[${model}] HTTP ${res.status}: ${body.slice(0, 150)}`;
+                lastErr = `${model[0]}/${model[1]} → HTTP ${res.status}: ${body.slice(0, 100)}`;
                 logW('graph', lastErr);
                 continue;
             }
             const json = await res.json();
             const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            logI('graph', `AI 분석 성공 (${model})`);
+            logI('graph', `AI 분석 성공: ${model[0]}/${model[1]}`);
             return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
         } catch (fetchErr) {
-            lastErr = `[${model}] ${fetchErr.message}`;
+            lastErr = `${model[0]}/${model[1]} → ${fetchErr.message}`;
             logW('graph', lastErr);
         }
     }
