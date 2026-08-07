@@ -1242,7 +1242,7 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
     // 지문 60% / 문제 40%, 폰트: 지문=원본의 1/2, 문제=원본 동일
     const pWrapW  = Math.floor(BODY_W * 0.60);
     const qWrapW  = BODY_W - pWrapW - 1;
-    const Sp      = 1.5;   // 지문: 14.5px × 1.5 = 21.75px (이전 0.5의 3배)
+    const Sp      = 1.0;   // 폰트 원본과 동일 (scale 없음), 가로폭은 pWrapW로 확장
     const Sq      = 1.0;   // 문제: 14px × 1.0 = 14px (원본)
     const numQ    = Math.max(1, _TOTAL_QUESTIONS || 3);
     const TOTAL_W = pWrapW + 1 + qWrapW;
@@ -1317,14 +1317,15 @@ function _buildReplayOverlay(snap, totalMs, passageEl, questionEl, pInfo, qInfo)
 // isQuestion=true: inner에 _rplQInner 클래스 부여 + visibility 관리
 function _buildMinimap(sourceEl, S, wrapW, wrapH, showAllBlocks, isQuestion) {
     const wrap = _el('div', '', `width:${wrapW}px;height:${wrapH}px;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.012)`);
-    const inner = _el('div', '', `width:${sourceEl.scrollWidth}px;height:${sourceEl.scrollHeight}px;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none;overflow:hidden`);
+    // width = wrapW: 원본보다 넓은 컴테이너에서 텍스트 리플로우 → 폰트 크기 유지, 가로폭만 확장
+    const inner = _el('div', '', `width:${wrapW}px;position:absolute;top:0;left:0;pointer-events:none;overflow:hidden`);
     if (isQuestion) inner.classList.add('_rplQInner');
     inner.innerHTML = sourceEl.innerHTML;
     // 클론 콘텐츠내 스크롤바 강제 제거
     inner.querySelectorAll('*').forEach(el => {
-        el.style.overflow   = 'hidden';
-        el.style.overflowY  = 'hidden';
-        el.style.overflowX  = 'hidden';
+        el.style.overflow  = 'hidden';
+        el.style.overflowY = 'hidden';
+        el.style.overflowX = 'hidden';
     });
     inner.querySelectorAll('.panel-header').forEach(el => { el.style.position = 'relative'; });
     if (showAllBlocks) {
