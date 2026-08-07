@@ -951,6 +951,32 @@ function showQuestion(qIdx) {
 
     // 현재 문제 AOI만 포함하도록 목록 갱신
     buildAOIList();
+
+    // ── 선지 클릭 → 정답 피드백 ──
+    const currentBlock = blocks[qIdx];
+    if (!currentBlock) return;
+    const choiceList = currentBlock.querySelector('.choice-list');
+    if (!choiceList || choiceList.classList.contains('answered')) return;
+
+    const answerNum  = parseInt(currentBlock.dataset.answer, 10); // 1~5
+    const choiceLis  = Array.from(choiceList.querySelectorAll('li'));
+
+    choiceLis.forEach((li, idx) => {
+        li.addEventListener('click', function onChoiceClick() {
+            if (choiceList.classList.contains('answered')) return;
+            choiceList.classList.add('answered');
+
+            const selectedNum = idx + 1;
+            if (selectedNum === answerNum) {
+                li.classList.add('correct');  // 정답 선택
+            } else {
+                li.classList.add('wrong');    // 오답 선택
+                // 정답 공개
+                const correctLi = choiceList.querySelector('[data-correct]');
+                if (correctLi) correctLi.classList.add('reveal');
+            }
+        }, { once: true });
+    });
 }
 
 /**

@@ -627,13 +627,33 @@ body {
   color: rgba(108,123,255,0.8);
   font-size: 13px;
 }
-.choice-list li:nth-child(1)::before { content: '??; }
-.choice-list li:nth-child(2)::before { content: '??; }
-.choice-list li:nth-child(3)::before { content: '??; }
-.choice-list li:nth-child(4)::before { content: '??; }
-.choice-list li:nth-child(5)::before { content: '??; }
+.choice-list li:nth-child(1)::before { content: '①'; }
+.choice-list li:nth-child(2)::before { content: '②'; }
+.choice-list li:nth-child(3)::before { content: '③'; }
+.choice-list li:nth-child(4)::before { content: '④'; }
+.choice-list li:nth-child(5)::before { content: '⑤'; }
 
-/* ?? Q3 material box ?? */
+/* ── 정답 피드백 상태 ── */
+.choice-list li.correct {
+  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.7);
+  color: #6ee7b7;
+}
+.choice-list li.correct::before { color: #34d399; }
+.choice-list li.wrong {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+}
+.choice-list li.wrong::before { color: #ef4444; }
+.choice-list li.reveal {
+  border-color: rgba(251, 191, 36, 0.6);
+  color: #fbbf24;
+}
+.choice-list li.reveal::before { color: #fbbf24; }
+.choice-list.answered li { cursor: default; pointer-events: none; transform: none !important; }
+
+/* ?€?€ Q3 material box ?€?€ */
 .q3-material {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
