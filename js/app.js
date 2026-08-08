@@ -491,7 +491,7 @@ let _aoiLastHitTs    = {};         // { aoiId: 마지막 gaze hit 시각 (frame 
 let _aoiBorderOn     = new Set();  // 현재 녹색 테두리 켜진 AOI id 집합
 
 // ── AOI 디버그 표시 상태 ──
-let _aoiDebugVisible = true;       // 독해 모드 진입 시 자동 표시
+let _aoiDebugVisible = false;      // 디버그 HUD 기본 숨김
 
 // ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
@@ -934,7 +934,7 @@ function showReadingLayout() {
         ].join(';');
         document.body.appendChild(hud);
     }
-    _aoiDebugVisible = true;  // 독해 모드 진입 시 자동 ON
+    // _aoiDebugVisible: 독해 모드 진입 시 자동 ON 제거 (숨김 유지)
     if (btnDbg) { btnDbg.classList.add('is-on'); btnDbg.classList.remove('is-off'); }
 
     setStatus('Eye tracking active — 독해 모드');
