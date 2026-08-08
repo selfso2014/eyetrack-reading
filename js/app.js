@@ -1252,6 +1252,19 @@ function startReplay() {
     // 첫 번째 문제만 표시
     clonedQBlocks.forEach((b, i) => { b.style.display = i === 0 ? 'block' : 'none'; });
 
+    // 문단 테두리 (파란 계열)
+    Array.from(cloneRoot.querySelectorAll('.passage-para')).forEach(el => {
+        el.style.outline = '1px solid rgba(108,123,255,0.45)';
+        el.style.outlineOffset = '3px';
+        el.style.borderRadius = '3px';
+    });
+    // 문제 블록 테두리 (초록 계열)
+    clonedQBlocks.forEach(b => {
+        b.style.outline = '1px solid rgba(52,211,153,0.45)';
+        b.style.outlineOffset = '3px';
+        b.style.borderRadius = '4px';
+    });
+
     // ── 오버레이 구성 ──
     const ovl = document.createElement('div');
     ovl.id = '_rplOvl';
@@ -1264,6 +1277,7 @@ function startReplay() {
     // 67% 스케일 래퍼
     const scaleInner = document.createElement('div');
     const pct = (100 / SCALE).toFixed(2);
+    // flex-column 으로 만들어야 cloneRoot(#readingPanels)의 align-self:center 가 작동
     scaleInner.style.cssText = [
         `transform:scale(${SCALE})`,
         'transform-origin:top left',
@@ -1271,7 +1285,9 @@ function startReplay() {
         `height:${pct}%`,
         'pointer-events:none',
         'position:absolute',
-        'top:0', 'left:0'
+        'top:0', 'left:0',
+        'display:flex',
+        'flex-direction:column'
     ].join(';');
     scaleInner.appendChild(cloneRoot);
     contentArea.appendChild(scaleInner);
@@ -1321,6 +1337,11 @@ function startReplay() {
 
     document.body.appendChild(ovl);
 
+    // 오버레이 삽입 후 clone 실제 위치 측정 → dot 좌표 계산에 사용
+    const cloneBcr  = cloneRoot.getBoundingClientRect();
+    const CLONE_LEFT = cloneBcr.left;
+    const CLONE_TOP  = cloneBcr.top;
+
     _replayActive = true;
     const btn = document.getElementById('btnReplay');
     if (btn) { btn.textContent = '■ 중단'; btn.classList.add('replay-active'); }
@@ -1350,10 +1371,10 @@ function startReplay() {
         if (clonedPassage && typeof frame.scrl === 'number') clonedPassage.scrollTop = frame.scrl;
         if (clonedQVP    && typeof frame.qscrl === 'number') clonedQVP.scrollTop    = frame.qscrl;
 
-        // 시선 dot 위치 (스케일 좌표 변환)
+        // 시선 dot 위치 — 원본 패널 기준 오프셋을 스케일 후 clone 실제 위치에 더함
         if (typeof frame.x === 'number' && frame.s <= 1) {
-            dot.style.left    = ((frame.x - PANELS_LEFT) * SCALE) + 'px';
-            dot.style.top     = ((frame.y - PANELS_TOP)  * SCALE) + 'px';
+            dot.style.left    = (CLONE_LEFT + (frame.x - PANELS_LEFT) * SCALE) + 'px';
+            dot.style.top     = (CLONE_TOP  + (frame.y - PANELS_TOP)  * SCALE) + 'px';
             dot.style.display = 'block';
         }
 
