@@ -1994,7 +1994,7 @@ ${qLines}
 }
 
 async function _requestCoachingReport(apiKey, prompt) {
-    const MODEL = 'gemini-2.5-flash';
+    const MODEL = 'gemini-3.6-flash';
 
     // JSON 정규식 추출 (결과에 설명 텍스트가 들어와도 안전하게)
     const extractJSON = raw => {
@@ -2103,7 +2103,7 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
 {"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    const MODEL = 'gemini-2.5-flash';   // 단일 모델 고정
+    const MODEL = 'gemini-3.6-flash';   // 단일 모델 고정
 
     const statusEl = document.getElementById('gazeGraphStatus');
     const setMsg = m => { if (statusEl) statusEl.textContent = m; };
