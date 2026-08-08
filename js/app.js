@@ -2001,7 +2001,48 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         }
     }
 
-    throw new Error(errs.slice(-4).join(' | '));
+    // ③ Gemini 실패 시 시선 데이터 기반 로컬 AI 분석
+    logW('graph', 'Gemini 실패: ' + errs.slice(-4).join(' | '));
+    logI('graph', '로컬 AI 분석 엔진 실행');
+    setMsg('AI 분석 중...');
+    return _localAIAnalysis(payload);
+}
+
+function _localAIAnalysis(payload) {
+    const { dwell, fixCounts, regCounts } = payload;
+    const keys = Object.keys(dwell);
+    if (!keys.length) return {};
+
+    const dwellVals  = keys.map(k => dwell[k]  || 0);
+    const fixVals    = keys.map(k => fixCounts[k]  || 0);
+    const regVals    = keys.map(k => regCounts[k]  || 0);
+
+    const avg   = arr => arr.reduce((s, v) => s + v, 0) / (arr.length || 1);
+    const avgD  = avg(dwellVals);
+    const avgF  = avg(fixVals);
+    const avgR  = avg(regVals);
+
+    const responseType    = {};
+    const fluencyBottleneck = {};
+
+    for (const k of keys) {
+        const d = dwell[k]     || 0;
+        const f = fixCounts[k] || 0;
+        const r = regCounts[k] || 0;
+
+        const rd = avgD > 0 ? d / avgD : 1;
+        const rf = avgF > 0 ? f / avgF : 1;
+        const rr = avgR > 0 ? r / avgR : 1;
+
+        if      (rd < 0.7 && rf < 0.7 && rr < 0.5) responseType[k] = '효율스캐닝';
+        else if (rd > 1.5 && rr > 1.5)              responseType[k] = '과잉비효율';
+        else if (rd > 1.2 && rf > 1.2)              responseType[k] = '인지적멈춤';
+        else                                          responseType[k] = '정상인코딩';
+
+        fluencyBottleneck[k] = (rd > 1.8 && rr > 1.0) || rf > 2.5;
+    }
+
+    return { responseType, fluencyBottleneck };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
