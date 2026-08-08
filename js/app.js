@@ -1248,8 +1248,6 @@ function startReplay() {
     const clonedQVP     = cloneRoot.querySelector('#questionViewport');
     const clonedQBlocks = Array.from(cloneRoot.querySelectorAll('.question-block'));
 
-    // 중복 id 제거
-    cloneRoot.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
 
     // 첫 번째 문제만 표시
     clonedQBlocks.forEach((b, i) => { b.style.display = i === 0 ? 'block' : 'none'; });
