@@ -1,15 +1,15 @@
-// js/app.js ??SeeSo Eye Tracking with iOS Crash Prevention
+// js/app.js — SeeSo Eye Tracking with iOS Crash Prevention
 // All patches derived from SDK v2.5.2 analysis
-// webpack-loader 肄붾뱶 ?몃씪??(file:// ?꾨줈?좎퐳 吏?? XHR ?대갚 ?ы븿)
+// webpack-loader 코드 인라인 (file:// 프로토콜 지원: XHR 폴백 포함)
 async function loadWebpackModule(url) {
-    // fetch() ?곗꽑, file:// ?먯꽌 李⑤떒?섎㈃ XMLHttpRequest濡??대갚
+    // fetch() 우선, file:// 에서 차단되면 XMLHttpRequest로 폴백
     let code;
     try {
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         code = await res.text();
     } catch (_fetchErr) {
-        // file:// ?섍꼍: XMLHttpRequest ?ъ슜 (?숆린 紐⑤뱶濡??덉젙??濡쒕뱶)
+        // file:// 환경: XMLHttpRequest 사용 (동기 모드로 안정적 로드)
         code = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('GET', url, true);
@@ -47,10 +47,10 @@ async function loadWebpackModule(url) {
     return fn(__webpack_exports__, __webpack_require__);
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠1. Configuration
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// Direct key selection ??no fallback loop to prevent SDK singleton state poisoning on Safari
+// ═══════════════════════════════════════════════════════════════════════════════
+// §1. Configuration
+// ═══════════════════════════════════════════════════════════════════════════════
+// Direct key selection — no fallback loop to prevent SDK singleton state poisoning on Safari
 const LICENSE_KEY = window.location.hostname === "selfso2014.github.io"
     ? "prod_srdpyuuaumnsqoyk2pvdci0rg3ahsr923bshp32u"
     : "dev_1ntzip9admm6g0upynw3gooycnecx0vl93hz8nox";
@@ -70,27 +70,27 @@ const INIT_ERROR_NAMES = {
 };
 
 const CONFIG = {
-    MAX_CAM_WIDTH: 480,       // iOS 硫붾え由?蹂댄샇: ?꾨젅?꾨떦 1.2MB濡??쒗븳
+    MAX_CAM_WIDTH: 480,       // iOS 메모리 보호: 프레임당 1.2MB로 제한
     MAX_CAM_HEIGHT: 640,
     TARGET_FPS: 30,
     RENDER_INTERVAL_MS: 33.3, // 30fps cap
-    CAL_POINTS: 5,            // 罹섎━釉뚮젅?댁뀡 ?ъ씤????(5-point: 4紐⑥꽌由?+ 以묒븰)
+    CAL_POINTS: 5,            // 캘리브레이션 포인트 수 (5-point: 4모서리 + 중앙)
     CAL_CRITERIA: 0,          // 0=Low, 1=Medium, 2=High
     LOG_MAX: 800,
     CRASH_SAVE_INTERVAL_MS: 500,
-    RESTART_INTERVAL_MS: 50000, // 50珥덈쭏??SDK ?ъ떆??(iOS 硫붾え由??꾩닔 諛⑹?)
+    RESTART_INTERVAL_MS: 50000, // 50초마다 SDK 재시작 (iOS 메모리 누수 방지)
 };
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠2. Platform Detection
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §2. Platform Detection
+// ═══════════════════════════════════════════════════════════════════════════════
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const IS_SAFARI = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || IS_IOS;
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠3. Logging System (with crash recovery)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §3. Logging System (with crash recovery)
+// ═══════════════════════════════════════════════════════════════════════════════
 const LOG_BUFFER = [];
 let _logDirty = false;
 let _crashSavePending = false;
@@ -140,9 +140,9 @@ function scheduleCrashSave() {
     }, CONFIG.CRASH_SAVE_INTERVAL_MS);
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠4. DOM References
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §4. DOM References
+// ═══════════════════════════════════════════════════════════════════════════════
 const $ = (id) => document.getElementById(id);
 const els = {
     startScreen: $('startScreen'),
@@ -170,7 +170,7 @@ if (els.pillCoi) {
     els.pillCoi.textContent = `COI: ${window.crossOriginIsolated ? 'on' : 'off'}`;
     els.pillCoi.dataset.state = window.crossOriginIsolated ? 'ok' : 'warn';
     if (!window.crossOriginIsolated) {
-        logW('coi', 'crossOriginIsolated is OFF ??SDK may fail. SW should fix this on reload.');
+        logW('coi', 'crossOriginIsolated is OFF — SDK may fail. SW should fix this on reload.');
     }
 }
 
@@ -185,7 +185,7 @@ function setPill(el, text, state = '') {
 if (els.debugToggle) {
     els.debugToggle.onclick = () => {
         els.debugPanel?.classList.toggle('open');
-        els.debugToggle.textContent = els.debugPanel?.classList.contains('open') ? '?? : '?맄';
+        els.debugToggle.textContent = els.debugPanel?.classList.contains('open') ? '✕' : '🐞';
     };
 }
 
@@ -200,9 +200,9 @@ if (btnCopy) {
     };
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠5. Canvas & Gaze Rendering (30fps cap)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §5. Canvas & Gaze Rendering (30fps cap)
+// ═══════════════════════════════════════════════════════════════════════════════
 let _lastRenderMs = 0;
 const gazeState = { x: null, y: null, trackingState: -1 };
 
@@ -253,9 +253,9 @@ function renderGaze() {
 
 window.addEventListener('resize', () => { resizeCanvas(); renderGaze(); });
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠6. Memory Monitor (1s interval)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §6. Memory Monitor (1s interval)
+// ═══════════════════════════════════════════════════════════════════════════════
 setInterval(() => {
     let heapStr = 'N/A';
     if (performance.memory) {
@@ -269,21 +269,21 @@ setInterval(() => {
     if (els.memMonitor) els.memMonitor.textContent = `Heap: ${heapStr} | Platform: ${IS_IOS ? 'iOS' : IS_SAFARI ? 'Safari' : 'Other'}`;
 }, 1000);
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠7. [CRITICAL] iOS Crash Prevention ??grabFrameAsImageData Patch
+// ═══════════════════════════════════════════════════════════════════════════════
+// §7. [CRITICAL] iOS Crash Prevention — grabFrameAsImageData Patch
 //
-//   ?듭떖 ?먮━:
-//   - Canvas.width瑜?留??꾨젅???ъ꽕?뺥븯硫?GPU backing store媛 留ㅻ쾲 ?뚭눼+?ъ깮?깅맖
-//   - iOS Safari?먯꽌 ?댁쟾 backing store ?댁젣媛 鍮꾨룞湲?吏????GPU 硫붾え由?臾댄븳 ?꾩쟻
-//   - JavaScript GC??GPU 硫붾え由щ? 愿由ы븯吏 ?딆쓬 ??60~90珥???Jetsam Kill
+//   핵심 원리:
+//   - Canvas.width를 매 프레임 재설정하면 GPU backing store가 매번 파괴+재생성됨
+//   - iOS Safari에서 이전 backing store 해제가 비동기 지연 → GPU 메모리 무한 누적
+//   - JavaScript GC는 GPU 메모리를 관리하지 않음 → 60~90초 내 Jetsam Kill
 //
-//   ?⑥튂:
-//   - Canvas ?ш린瑜?理쒖큹 1?뚮쭔 ?ㅼ젙 ??backing store ?ы븷???쒓굅
-//   - willReadFrequently: true ??GPU?묬PU sync ?쒓굅, CPU 寃쎈줈留??ъ슜
-//   - 寃곌낵: GPU 硫붾え由??곸닔??(~1.2MB) ???щ옒??~90% 諛⑹?
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+//   패치:
+//   - Canvas 크기를 최초 1회만 설정 → backing store 재할당 제거
+//   - willReadFrequently: true → GPU→CPU sync 제거, CPU 경로만 사용
+//   - 결과: GPU 메모리 상수화 (~1.2MB) → 크래시 ~90% 방지
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// Safari??鍮꾨뵒???섎━癒쇳듃 ? (?ъ궗?⑹쑝濡?DOM ?꾩쟻 諛⑹?)
+// Safari용 비디오 엘리먼트 풀 (재사용으로 DOM 누적 방지)
 const _videoPool = new Map();
 
 function _getOrCreateVideoEntry(track) {
@@ -306,7 +306,7 @@ function _getOrCreateVideoEntry(track) {
 function patchGrabFrameAsImageData(rawSeeso) {
     const ic = rawSeeso?.imageCapture;
     if (!ic) {
-        // imageCapture??startTracking ?댄썑 ?앹꽦?????ъ떆??
+        // imageCapture는 startTracking 이후 생성됨 — 재시도
         setTimeout(() => patchGrabFrameAsImageData(rawSeeso), 100);
         return;
     }
@@ -315,17 +315,17 @@ function patchGrabFrameAsImageData(rawSeeso) {
 
     const track = rawSeeso.track || ic._videoStreamTrack;
 
-    // ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧
-    // iOS/Safari + Desktop 怨듯넻: ?쒕줈-?좊떦 ?⑥튂 v3
+    // ══════════════════════════════════════════════════════════════════════
+    // iOS/Safari + Desktop 공통: 제로-할당 패치 v3
     //
-    // ?듭떖 ?먯튃:
-    //   1. 留??꾨젅??new Promise() ?앹꽦 湲덉? ??Promise.resolve() ?ъ슜
-    //   2. getImageData() 寃곌낵瑜?利됱떆 ?ъ쟾 ?좊떦 踰꾪띁??蹂듭궗 ??null 泥섎━
-    //   3. MediaStream 諛섎났 ?앹꽦 湲덉?
-    //   4. Canvas/Context 1?뚮쭔 ?앹꽦
-    // ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧
+    // 핵심 원칙:
+    //   1. 매 프레임 new Promise() 생성 금지 → Promise.resolve() 사용
+    //   2. getImageData() 결과를 즉시 사전 할당 버퍼에 복사 후 null 처리
+    //   3. MediaStream 반복 생성 금지
+    //   4. Canvas/Context 1회만 생성
+    // ══════════════════════════════════════════════════════════════════════
 
-    // ?ъ쟾 ?좊떦 由ъ냼??
+    // 사전 할당 리소스
     let _video = null;
     let _canvas = null;
     let _ctx = null;
@@ -335,7 +335,7 @@ function patchGrabFrameAsImageData(rawSeeso) {
     let _lastH = 0;
     let _videoReady = false;
 
-    // 鍮꾨뵒???ㅼ젙 (1?뚮쭔)
+    // 비디오 설정 (1회만)
     if (IS_SAFARI && track) {
         _video = document.createElement('video');
         _video.setAttribute('playsinline', '');
@@ -348,19 +348,19 @@ function patchGrabFrameAsImageData(rawSeeso) {
         _video.addEventListener('playing', () => { _videoReady = true; });
         if (_video.readyState >= 2) _videoReady = true;
     } else {
-        // Desktop: SDK ?댁옣 鍮꾨뵒???ъ슜
+        // Desktop: SDK 내장 비디오 사용
         _video = ic.videoElement;
         _videoReady = true;
     }
 
     ic.grabFrameAsImageData = function patchedGrabFrame_v3() {
-        // ?몃옓 ?곹깭 ?뺤씤
+        // 트랙 상태 확인
         const currentTrack = rawSeeso.track || ic._videoStreamTrack;
         if (!currentTrack || currentTrack.readyState !== 'live') {
             return Promise.reject(new DOMException('Track not live', 'InvalidStateError'));
         }
 
-        // 鍮꾨뵒??以鍮??湲?(理쒖큹 紐??꾨젅?꾨쭔 ????寃쎌슦留?Promise ?ъ슜)
+        // 비디오 준비 대기 (최초 몇 프레임만 — 이 경우만 Promise 사용)
         if (!_videoReady || !_video || _video.readyState < 2 || _video.videoWidth === 0) {
             return new Promise((resolve, reject) => {
                 setTimeout(() => ic.grabFrameAsImageData().then(resolve).catch(reject), 30);
@@ -370,7 +370,7 @@ function patchGrabFrameAsImageData(rawSeeso) {
         const w = _video.videoWidth;
         const h = _video.videoHeight;
 
-        // Canvas + 踰꾪띁 珥덇린??(?ш린 蹂寃??쒖뿉留????ъ떎??1??
+        // Canvas + 버퍼 초기화 (크기 변경 시에만 — 사실상 1회)
         if (_lastW !== w || _lastH !== h) {
             _canvas = document.createElement('canvas');
             _canvas.width = w;
@@ -380,36 +380,36 @@ function patchGrabFrameAsImageData(rawSeeso) {
             _reuseImgData = new ImageData(_reuseBuffer, w, h);
             _lastW = w;
             _lastH = h;
-            logI('patch', `[v3] Canvas pinned: ${w}횞${h}, buffer=${(w * h * 4 / 1024).toFixed(0)}KB`);
+            logI('patch', `[v3] Canvas pinned: ${w}×${h}, buffer=${(w * h * 4 / 1024).toFixed(0)}KB`);
         }
 
-        // ?꾨젅??罹≪쿂: drawImage ??getImageData ??利됱떆 蹂듭궗 ???댁젣
+        // 프레임 캡처: drawImage → getImageData → 즉시 복사 → 해제
         _ctx.drawImage(_video, 0, 0);
         var tmp = _ctx.getImageData(0, 0, w, h);
         _reuseBuffer.set(tmp.data);
-        tmp = null; // GC 利됱떆 ?섍굅 媛??
+        tmp = null; // GC 즉시 수거 가능
 
-        // Promise.resolve()濡?諛섑솚 (留??꾨젅???좊떦 ?놁쓬)
+        // Promise.resolve()로 반환 (매 프레임 할당 없음)
         return Promise.resolve(_reuseImgData);
     };
 
-    logI('patch', `[v3] grabFrameAsImageData PATCHED ??zero-alloc (${IS_SAFARI ? 'Safari' : 'Desktop'})`);
+    logI('patch', `[v3] grabFrameAsImageData PATCHED — zero-alloc (${IS_SAFARI ? 'Safari' : 'Desktop'})`);
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠8. [iOS] Visibility Guard ?????④? ??紐⑤뱺 猷⑦봽 ?뺤?
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §8. [iOS] Visibility Guard — 탭 숨김 시 모든 루프 정지
+// ═══════════════════════════════════════════════════════════════════════════════
 let _wasTracking = false;
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-        logW('ios', 'Tab hidden ??pausing to prevent OOM Kill');
+        logW('ios', 'Tab hidden — pausing to prevent OOM Kill');
         _wasTracking = _trackingActive;
         if (_rawSeeso?.thread) {
             _rawSeeso.thread.stop();
             logI('ios', 'Camera thread PAUSED');
         }
     } else {
-        logW('ios', 'Tab visible ??resuming');
+        logW('ios', 'Tab visible — resuming');
         if (_wasTracking && _rawSeeso?.thread) {
             _rawSeeso.thread.start();
             logI('ios', 'Camera thread RESUMED');
@@ -417,15 +417,15 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠9. Camera Management (iOS ?댁긽???쒗븳)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §9. Camera Management (iOS 해상도 제한)
+// ═══════════════════════════════════════════════════════════════════════════════
 let _mediaStream = null;
 
 async function ensureCamera() {
     if (_mediaStream?.active) return true;
 
-    // ?댁쟾 ?ㅽ듃由??뺣━
+    // 이전 스트림 정리
     if (_mediaStream) {
         try { _mediaStream.getTracks().forEach(t => t.stop()); } catch (_) { }
         _mediaStream = null;
@@ -434,7 +434,7 @@ async function ensureCamera() {
     setPill(els.pillCam, 'Cam: requesting', 'warn');
 
     const attempts = [
-        // [FIX] iOS ?댁긽???쒗븳: max 480횞640 ??1.2MB/?꾨젅??(iPhone 15 Pro 11MB 諛⑹?)
+        // [FIX] iOS 해상도 제한: max 480×640 → 1.2MB/프레임 (iPhone 15 Pro 11MB 방지)
         { video: { facingMode: 'user', width: { max: CONFIG.MAX_CAM_WIDTH }, height: { max: CONFIG.MAX_CAM_HEIGHT }, frameRate: { ideal: CONFIG.TARGET_FPS, max: CONFIG.TARGET_FPS } }, audio: false },
         { video: { facingMode: 'user' }, audio: false },
         { video: true, audio: false },
@@ -446,73 +446,73 @@ async function ensureCamera() {
             _mediaStream = await navigator.mediaDevices.getUserMedia(attempts[i]);
             const track = _mediaStream.getVideoTracks()[0];
             const s = track?.getSettings?.();
-            logI('cam', `Camera: ${s?.width}횞${s?.height} @ ${s?.frameRate}fps`);
-            setPill(els.pillCam, `Cam: ${s?.width}횞${s?.height}`, 'ok');
+            logI('cam', `Camera: ${s?.width}×${s?.height} @ ${s?.frameRate}fps`);
+            setPill(els.pillCam, `Cam: ${s?.width}×${s?.height}`, 'ok');
             return true;
         } catch (e) {
-            logW('cam', `Attempt ${i + 1} failed: ${e.name} ??${e.message}`);
+            logW('cam', `Attempt ${i + 1} failed: ${e.name} — ${e.message}`);
         }
     }
 
-    // 紐⑤뱺 ?쒕룄 ?ㅽ뙣
+    // 모든 시도 실패
     setPill(els.pillCam, 'Cam: denied', 'error');
     logE('cam', 'All getUserMedia attempts failed');
-    setStatus('?좑툘 Camera access denied. Please allow camera permission.');
+    setStatus('⚠️ Camera access denied. Please allow camera permission.');
     return false;
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠10. SeeSo SDK Management
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §10. SeeSo SDK Management
+// ═══════════════════════════════════════════════════════════════════════════════
 let _SDK = null;
 let _seeso = null;
 let _rawSeeso = null;
 let _trackingActive = false;
-let _readingActive = false;  // ?낇빐 ?덉씠?꾩썐 ?쒖꽦 ?щ?
-let _aoiElements = [];       // ?꾩옱 ?쒖꽦 AOI DOM ?붿냼 紐⑸줉
+let _readingActive = false;  // 독해 레이아웃 활성 여부
+let _aoiElements = [];       // 현재 활성 AOI DOM 요소 목록
 
-// ?? 媛?쒖꽦 ?좉? ?곹깭 ??
+// ── 가시성 토글 상태 ──
 let _gazeVisible  = true;
 let _aoiVisible   = true;
 let _timerVisible = false;
 
-// ?? 臾몄젣 ?대퉬寃뚯씠????
+// ── 문제 내비게이션 ──
 const _TOTAL_QUESTIONS = 3;
 let _currentQIdx = 0;
 
-// ?? ?몄뀡 ??대㉧ ??
+// ── 세션 타이머 ──
 let _sessionStartTime = null;
 let _timerInterval    = null;
 
-// ?? AOI ?꾩쟻 ?쒖쎇(cumulative dwell) ?곹깭 ??
-// ?곗냽 ?묒떆 ?쒓컙???꾨땶 '珥??꾩쟻 ?묒떆 ?쒓컙'??痢≪젙?쒕떎.
-// ?낆꽌 以??ъ??대뱶濡??좉퉸 踰쀬뼱?섎룄 ?꾩쟻媛믪씠 ?좎??쒕떎.
-let _aoiDwellAccum   = {};         // { aoiId: 珥??꾩쟻 ?묒떆 ms }
-let _aoiLastHitTs    = {};         // { aoiId: 留덉?留?gaze hit ?쒓컖 (frame delta 怨꾩궛) }
-let _aoiBorderOn     = new Set();  // ?꾩옱 ?뱀깋 ?뚮몢由?耳쒖쭊 AOI id 吏묓빀
+// ── AOI 누적 드웰(cumulative dwell) 상태 ──
+// 연속 응시 시간이 아닌 '총 누적 응시 시간'을 측정한다.
+// 독서 중 사케이드로 잠깐 벗어나도 누적값이 유지된다.
+let _aoiDwellAccum   = {};         // { aoiId: 총 누적 응시 ms }
+let _aoiLastHitTs    = {};         // { aoiId: 마지막 gaze hit 시각 (frame delta 계산) }
+let _aoiBorderOn     = new Set();  // 현재 녹색 테두리 켜진 AOI id 집합
 
-// ?? AOI ?붾쾭洹??쒖떆 ?곹깭 ??
-let _aoiDebugVisible = false;      // ?붾쾭洹?HUD 湲곕낯 ?④?
+// ── AOI 디버그 표시 상태 ──
+let _aoiDebugVisible = false;      // 디버그 HUD 기본 숨김
 
-// ?? ?쒖꽑 湲곕줉 (由ы뵆?덉씠?? ??
+// ── 시선 기록 (리플레이용) ──
 let _gazeLog = [];
 
-// ?? 由ы뵆?덉씠 ?곹깭 ??
+// ── 리플레이 상태 ──
 let _replayActive = false;
 let _replayRAF    = null;
 
-// ?? ?ъ슜???듭? ?좏깮 湲곕줉 ??
+// ── 사용자 답지 선택 기록 ──
 let _userAnswers = {};  // { qIdx: { choice:1~5, t:ms } }
-let _coachingCache   = null;  // AI 肄붿묶 由ы룷??罹먯떆
-let _lastSessionSnap = null;  // ?몄뀡 醫낅즺 ????λ맂 怨꾩궛 ?곗씠??
+let _coachingCache   = null;  // AI 코칭 리포트 캐시
+let _lastSessionSnap = null;  // 세션 종료 시 저장된 계산 데이터
 
-// ?? 吏臾??ъ쟾 遺꾩꽍 (?섎뱶肄붾뵫 ??吏臾?援먯껜 ?쒖뿉留??몄쭛) ??
+// ── 지문 사전 분석 (하드코딩 — 지문 교체 시에만 편집) ──
 const PASSAGE_ANALYSIS = {
     infoDensity: {
-        'para-0': '怨?,
-        'para-1': '?',
-        'para-2': '怨?,
-        'para-3': '以?
+        'para-0': '고',
+        'para-1': '저',
+        'para-2': '고',
+        'para-3': '중'
     },
     sourceParagraph: {
         'q-1': ['para-3'],
@@ -576,16 +576,16 @@ async function initSDK() {
     }
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠11. Tracking (with patch application)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §11. Tracking (with patch application)
+// ═══════════════════════════════════════════════════════════════════════════════
 let _gazeCount = 0;
 
 function startTracking() {
     if (!_seeso || !_mediaStream) return false;
 
     try {
-        // 肄쒕갚 ?깅줉
+        // 콜백 등록
         _seeso.addGazeCallback(onGaze);
         _seeso.addDebugCallback(onDebug);
 
@@ -600,9 +600,9 @@ function startTracking() {
         _trackingActive = true;
         setPill(els.pillTrack, 'Track: running', 'ok');
 
-        // ?붴븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븮
-        // ?? [CRITICAL] ?몃옒???쒖옉 ??grabFrameAsImageData ?⑥튂 ?곸슜  ??
-        // ?싢븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븴
+        // ╔════════════════════════════════════════════════════════════╗
+        // ║  [CRITICAL] 트래킹 시작 후 grabFrameAsImageData 패치 적용  ║
+        // ╚════════════════════════════════════════════════════════════╝
         setTimeout(() => {
             patchGrabFrameAsImageData(_rawSeeso);
         }, 200);
@@ -622,7 +622,7 @@ function onGaze(gazeInfo) {
     gazeState.y = gazeInfo?.y;
     gazeState.trackingState = gazeInfo?.trackingState ?? -1;
 
-    // HUD ?낅뜲?댄듃 (throttled)
+    // HUD 업데이트 (throttled)
     if (_gazeCount % 5 === 0 && els.gazeInfo) {
         const xStr = typeof gazeState.x === 'number' ? gazeState.x.toFixed(0) : '-';
         const yStr = typeof gazeState.y === 'number' ? gazeState.y.toFixed(0) : '-';
@@ -633,15 +633,15 @@ function onGaze(gazeInfo) {
 
     renderGaze();
 
-    // ?? AOI ?먯젙 + ?쒖꽑 湲곕줉 (?낇빐 ?붾㈃ ?쒖꽦 ?? ??
+    // ── AOI 판정 + 시선 기록 (독해 화면 활성 시) ──
     if (_readingActive && _sessionStartTime) {
-        // trackingState 0(SUCCESS) + 1(LOW_CONFIDENCE) 紐⑤몢 AOI 泥댄겕
-        // ?ㅼ젣 eye tracking?먯꽌 LOW_CONFIDENCE媛 鍮덈쾲?섎ŉ, 0留??덉슜?섎㈃ AOI媛 嫄곗쓽 ?먯? ????
+        // trackingState 0(SUCCESS) + 1(LOW_CONFIDENCE) 모두 AOI 체크
+        // 실제 eye tracking에서 LOW_CONFIDENCE가 빈번하며, 0만 허용하면 AOI가 거의 탐지 안 됨
         if ((gazeState.trackingState === 0 || gazeState.trackingState === 1)
             && gazeState.x != null && gazeState.y != null) {
             checkAOI(gazeState.x, gazeState.y);
         }
-        // ?쒖꽑 濡쒓렇 湲곕줉
+        // 시선 로그 기록
         _gazeLog.push({
             t:    Date.now() - _sessionStartTime,
             x:    gazeState.x,
@@ -659,16 +659,16 @@ function onDebug(fps, latMin, latMax, latAvg) {
     logI('debug', `FPS=${fps} lat=${latAvg?.toFixed?.(1) || latAvg}ms (${latMin}-${latMax})`);
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠12. Calibration
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §12. Calibration
+// ═══════════════════════════════════════════════════════════════════════════════
 let _calProgress = 0;
 let _calPointIndex = 0;
 
 function startCalibration() {
     if (!_seeso) return false;
 
-    // 肄쒕갚 ?깅줉
+    // 콜백 등록
     _seeso.addCalibrationNextPointCallback(onCalNextPoint);
     _seeso.addCalibrationProgressCallback(onCalProgress);
     _seeso.addCalibrationFinishCallback(onCalFinish);
@@ -680,7 +680,7 @@ function startCalibration() {
         els.calOverlay?.classList.add('active');
         setPill(els.pillCal, 'Cal: running', 'warn');
         setStatus('Look at the dot and keep your head still.');
-        if (els.calInstruct) els.calInstruct.textContent = '鍮쏅굹???먯쓣 諛붾씪遊?二쇱꽭?? 癒몃━??怨좎젙?섏꽭??';
+        if (els.calInstruct) els.calInstruct.textContent = '빛나는 점을 바라봐 주세요. 머리는 고정하세요.';
     } else {
         logE('cal', 'startCalibration returned false');
         setPill(els.pillCal, 'Cal: failed', 'error');
@@ -692,7 +692,7 @@ function onCalNextPoint(x, y) {
     _calPointIndex++;
     logI('cal', `Next point #${_calPointIndex}: (${x.toFixed(0)}, ${y.toFixed(0)})`);
 
-    // ??留?而⑦뀒?대꼫瑜?(x,y) 以묒븰?쇰줈 ?대룞 (而⑦뀒?대꼫 80px ???덈컲=40)
+    // 점+링 컨테이너를 (x,y) 중앙으로 이동 (컨테이너 80px → 절반=40)
     if (els.calPoint) {
         els.calPoint.style.position = 'fixed';
         els.calPoint.style.left = `${x - 40}px`;
@@ -700,7 +700,7 @@ function onCalNextPoint(x, y) {
         els.calPoint.style.transform = 'none';
     }
 
-    // SDK???섑뵆 ?섏쭛 ?쒖옉 ?뚮┝ (?쎄컙???쒕젅????
+    // SDK에 샘플 수집 시작 알림 (약간의 딜레이 후)
     setTimeout(() => {
         try {
             _seeso.startCollectSamples();
@@ -714,7 +714,7 @@ function onCalNextPoint(x, y) {
 function onCalProgress(progress) {
     _calProgress = progress;
     const pct  = Math.round(progress * 100);
-    const CIRC = 201.06;  // 2? 횞 32
+    const CIRC = 201.06;  // 2π × 32
 
     const ring = document.getElementById('calRingFill');
     if (ring) {
@@ -729,23 +729,23 @@ function onCalProgress(progress) {
 function onCalFinish(calibrationData) {
     logI('cal', 'Calibration finished!');
 
-    // [FIX] 罹섎━釉뚮젅?댁뀡 ??800ms GPU ?뚮윭???湲?(iPhone OOM 諛⑹?)
+    // [FIX] 캘리브레이션 후 800ms GPU 플러시 대기 (iPhone OOM 방지)
     els.calOverlay?.classList.remove('active');
     setPill(els.pillCal, 'Cal: done', 'ok');
     setStatus('Calibration complete! Eye tracking is active.');
 
     _calProgress  = 0;
     _calPointIndex = 0;
-    // SVG 留?珥덇린??
+    // SVG 링 초기화
     const ring = document.getElementById('calRingFill');
     if (ring) { ring.style.strokeDashoffset = '201.06'; ring.style.stroke = '#a78bfa'; }
 
-    // 肄쒕갚 ?뺣━
+    // 콜백 정리
     _seeso.removeCalibrationNextPointCallback(onCalNextPoint);
     _seeso.removeCalibrationProgressCallback(onCalProgress);
     _seeso.removeCalibrationFinishCallback(onCalFinish);
 
-    // 罹섎━釉뚮젅?댁뀡 ?곗씠?????(?ъ궗??媛??
+    // 캘리브레이션 데이터 저장 (재사용 가능)
     if (calibrationData) {
         try {
             const dataStr = JSON.stringify({
@@ -757,32 +757,32 @@ function onCalFinish(calibrationData) {
         } catch (_) { }
     }
 
-    // ?? ?낇빐 ?붾㈃ ?꾪솚 (GPU ?뚮윭???湲???800ms) ??
+    // ── 독해 화면 전환 (GPU 플러시 대기 후 800ms) ──
     setTimeout(() => showReadingLayout(), 800);
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠12b. Reading Layout & AOI Detection
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §12b. Reading Layout & AOI Detection
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * [?꾩쟻 ?쒖쎇 ?뚭퀬由ъ쬁] ?쒖꽑 醫뚰몴濡?AOI ?덊듃 ?먯젙 + ?뚮몢由?ON/OFF + ?붾쾭洹?HUD.
+ * [누적 드웰 알고리즘] 시선 좌표로 AOI 히트 판정 + 테두리 ON/OFF + 디버그 HUD.
  *
- * 湲곗〈 諛⑹떇 (enter-time based)??臾몄젣:
- *   ?낆꽌 以??ъ??대뱶濡??붿냼瑜??좉퉸 踰쀬뼱?섎㈃ ??대㉧ RESET ??800ms ?꾨떖 遺덇?
+ * 기존 방식 (enter-time based)의 문제:
+ *   독서 중 사케이드로 요소를 잠깐 벗어나면 타이머 RESET → 800ms 도달 불가
  *
- * ??諛⑹떇 (cumulative dwell):
- *   ?붿냼瑜?諛붾씪蹂?留?frame???쒓컙(delta)???꾩쟻?쒕떎.
- *   ?щ윭 踰?遊먮룄 ?⑹궛 ???댄깉?대룄 由ъ뀑 ????
- *   _AOI_RESET_MS(3珥? ?숈븞 ?꾪? ??蹂대㈃ 洹몃븣 由ъ뀑.
+ * 새 방식 (cumulative dwell):
+ *   요소를 바라본 매 frame의 시간(delta)을 누적한다.
+ *   여러 번 봐도 합산 → 이탈해도 리셋 안 됨.
+ *   _AOI_RESET_MS(3초) 동안 전혀 안 보면 그때 리셋.
  */
-const _AOI_DWELL_MS  = 300;   // ?꾩쟻 300ms ?ъ꽦 ???뚮몢由?ON
-const _AOI_RESET_MS  =    0;  // 0ms = ?쒖꽑 踰쀬뼱?섎뒗 利됱떆 ?뚮몢由?OFF + ?꾩쟻 由ъ뀑
-const _AOI_HIT_PAD_X =   60;  // rect 醫뚯슦 ?뺤옣 px
-const _AOI_HIT_PAD_Y =   20;  // rect ?곹븯 ?뺤옣 px
-const _AOI_FRAME_CAP =  100;  // frame delta 理쒕? ms (??媛꾧꺽 臾댁떆)
+const _AOI_DWELL_MS  = 300;   // 누적 300ms 달성 시 테두리 ON
+const _AOI_RESET_MS  =    0;  // 0ms = 시선 벗어나는 즉시 테두리 OFF + 누적 리셋
+const _AOI_HIT_PAD_X =   60;  // rect 좌우 확장 px
+const _AOI_HIT_PAD_Y =   20;  // rect 상하 확장 px
+const _AOI_FRAME_CAP =  100;  // frame delta 최대 ms (큰 간격 무시)
 
-// AOI ?뚮몢由? inline style 吏곸젒 二쇱엯 (援?CSS 罹먯떆 ?꾩쟾 ?고쉶)
+// AOI 테두리: inline style 직접 주입 (구 CSS 캐시 완전 우회)
 function _applyAOIBorder(el) {
     el.classList.add('aoi-active');
     el.style.setProperty('outline',      '4px solid #34d399', 'important');
@@ -790,7 +790,7 @@ function _applyAOIBorder(el) {
     el.style.setProperty('box-shadow',
         '0 0 0 6px rgba(52,211,153,0.3), 0 0 24px rgba(52,211,153,0.5)', 'important');
     el.style.setProperty('background', 'rgba(52,211,153,0.07)', 'important');
-    logI('aoi', `??_applyAOIBorder: el.id=${el.dataset.aoi} outline=${el.style.outline}`);
+    logI('aoi', `■ _applyAOIBorder: el.id=${el.dataset.aoi} outline=${el.style.outline}`);
 }
 function _removeAOIBorder(el) {
     el.classList.remove('aoi-active');
@@ -805,11 +805,11 @@ function checkAOI(gazeX, gazeY) {
 
     const now = Date.now();
 
-    // ?? ?덊듃 ?먯젙 (?뺤옣??rect) ??
+    // ── 히트 판정 (확장된 rect) ──
     const currentHit = new Set();
     _aoiElements.forEach(el => {
         const r = el.getBoundingClientRect();
-        // display:none ?붿냼(rect ??0) ????쒖쇅
+        // display:none 요소(rect 다 0) 대상 제외
         if (r.width === 0 && r.height === 0) return;
         if (gazeX >= r.left  - _AOI_HIT_PAD_X &&
             gazeX <= r.right + _AOI_HIT_PAD_X &&
@@ -819,7 +819,7 @@ function checkAOI(gazeX, gazeY) {
         }
     });
 
-    // ?? ?덊듃 ?붿냼: frame delta ?꾩쟻 ??
+    // ── 히트 요소: frame delta 누적 ──
     currentHit.forEach(id => {
         const prevTs = _aoiLastHitTs[id];
         _aoiLastHitTs[id] = now;
@@ -829,45 +829,45 @@ function checkAOI(gazeX, gazeY) {
             _aoiDwellAccum[id] = (_aoiDwellAccum[id] || 0) + dt;
         } else {
             if (!_aoiDwellAccum[id]) _aoiDwellAccum[id] = 0;
-            logI('aoi', `${id} 吏꾩엯 (?꾩쟻:${_aoiDwellAccum[id]}ms)`);
+            logI('aoi', `${id} 진입 (누적:${_aoiDwellAccum[id]}ms)`);
         }
 
-        // ?뚮몢由?ON: ?꾩쟻 300ms ?댁긽
+        // 테두리 ON: 누적 300ms 이상
         if (_aoiDwellAccum[id] >= _AOI_DWELL_MS && !_aoiBorderOn.has(id)) {
             const el = document.querySelector(`[data-aoi="${id}"]`);
             if (el) {
                 _applyAOIBorder(el);
             } else {
-                logI('aoi', `?좑툘 ${id}: querySelector ??null ??DOM ???놁쓬`);
+                logI('aoi', `⚠️ ${id}: querySelector 답 null — DOM 에 없음`);
             }
             _aoiBorderOn.add(id);
-            logI('aoi', `??${id} ?뚮몢由?ON (?꾩쟻 ${_aoiDwellAccum[id]}ms)`);
+            logI('aoi', `✅ ${id} 테두리 ON (누적 ${_aoiDwellAccum[id]}ms)`);
         }
     });
 
-    // ?? 鍮꾪엳???붿냼: 1.5珥??댁긽 ??蹂대㈃ ?뚮몢由?OFF + ?꾩쟻 由ъ뀑 ??
+    // ── 비히트 요소: 1.5초 이상 안 보면 테두리 OFF + 누적 리셋 ──
     for (const id in _aoiLastHitTs) {
         if (!currentHit.has(id)) {
             if (now - _aoiLastHitTs[id] > _AOI_RESET_MS) {
-                // ?뚮몢由?ON ?곹깭硫?OFF (para / q 紐⑤몢)
+                // 테두리 ON 상태면 OFF (para / q 모두)
                 if (_aoiBorderOn.has(id)) {
                     const el = document.querySelector(`[data-aoi="${id}"]`);
                     if (el) _removeAOIBorder(el);
                     _aoiBorderOn.delete(id);
-                    logI('aoi', `${id} ?뚮몢由?OFF`);
+                    logI('aoi', `${id} 테두리 OFF`);
                 }
                 delete _aoiLastHitTs[id];
                 delete _aoiDwellAccum[id];
-                logI('aoi', `${id} ?꾩쟻 由ъ뀑`);
+                logI('aoi', `${id} 누적 리셋`);
             }
         }
     }
 
-    // ?? ?붾쾭洹?HUD ??
+    // ── 디버그 HUD ──
     _updateAOIDebugHud(gazeX, gazeY, currentHit, now);
 }
 
-/** ?몄뀡 醫낅즺: ?몃옒??AOI 以묐떒, 由ы뵆?덉씠/洹몃옒??踰꾪듉 ?쒖꽦??*/
+/** 세션 종료: 트래킹 AOI 중단, 리플레이/그래프 버튼 활성화 */
 function endSession() {
     _readingActive = false;
     clearAllAOI();
@@ -877,7 +877,7 @@ function endSession() {
     if (btnReplay)    btnReplay.disabled    = false;
     if (btnGazeGraph) { btnGazeGraph.disabled = false; btnGazeGraph.onclick = showGazeGraph; }
 
-    // 肄붿묶 踰꾪듉 利됱떆 ?쒖꽦??(?쒖꽑洹몃옒???놁씠???묐룞)
+    // 코칭 버튼 즉시 활성화 (시선그래프 없이도 작동)
     if (_gazeLog.length > 0) {
         const log         = _gazeLog.slice();
         const totalMs     = log[log.length - 1].t;
@@ -895,8 +895,8 @@ function endSession() {
         if (btnCr) { btnCr.disabled = false; btnCr.onclick = showCoachingReport; }
     }
 
-    setStatus('?낇빐 ?꾨즺! ??由ы뵆?덉씠 踰꾪듉?쇰줈 ?쒖꽑???뺤씤?섏꽭??');
-    logI('reading', `?몄뀡 醫낅즺. 爾?${_gazeLog.length}?꾨젅??湲곕줉.`);
+    setStatus('독해 완료! ▶ 리플레이 버튼으로 시선을 확인하세요.');
+    logI('reading', `세션 종료. 쳙 ${_gazeLog.length}프레임 기록.`);
 }
 
 function showReadingLayout() {
@@ -908,11 +908,11 @@ function showReadingLayout() {
     _gazeLog          = [];
     _gazeVisible      = true;
     _aoiVisible       = true;
-    _timerVisible     = true;   // [蹂寃? ??대㉧ 臾댁“嫄?ON
+    _timerVisible     = true;   // [변경] 타이머 무조건 ON
     _currentQIdx      = 0;
-    _userAnswers      = {};     // [FIX] ?몄뀡留덈떎 ?듭? 珥덇린??
+    _userAnswers      = {};     // [FIX] 세션마다 답지 초기화
 
-    // ?좎? ?좏깮 UI 珥덇린??(?댁쟾 ?몄뀡 ?좏깮 ?쒖떆 ?쒓굅)
+    // 선지 선택 UI 초기화 (이전 세션 선택 표시 제거)
     document.querySelectorAll('.choice-list li.selected').forEach(el => el.classList.remove('selected'));
     _coachingCache = null;
     const _crPanel = document.getElementById('coachingReport');
@@ -920,13 +920,13 @@ function showReadingLayout() {
     const _btnCr = document.getElementById('btnCoachingReport');
     if (_btnCr) { _btnCr.disabled = true; _btnCr.classList.remove('coaching-ready'); }
 
-    // HUD ?④린湲?(?낇빐 紐⑤뱶 以?
+    // HUD 숨기기 (독해 모드 중)
     document.body.classList.add('reading-mode');
 
-    // 泥?踰덉㎏ 臾몄젣 ?쒖떆
+    // 첫 번째 문제 표시
     showQuestion(0);
 
-    // ?? ??대㉧ ?먮룞 ?쒖옉 ??
+    // ── 타이머 자동 시작 ──
     const timerEl = document.getElementById('readingTimer');
     if (timerEl) timerEl.classList.remove('hidden');
     if (_timerInterval) clearInterval(_timerInterval);
@@ -939,7 +939,7 @@ function showReadingLayout() {
         if (el) el.textContent = `${m}:${s}`;
     }, 1000);
 
-    // ?대컮 踰꾪듉 ?곌껐
+    // 툴바 버튼 연결
     const btnGaze  = document.getElementById('btnToggleGaze');
     const btnAOI   = document.getElementById('btnToggleAOI');
     const btnTimer = document.getElementById('btnToggleTimer');
@@ -951,7 +951,7 @@ function showReadingLayout() {
 
     if (btnGaze)   btnGaze.onclick   = toggleGazeVisibility;
     if (btnAOI)    btnAOI.onclick    = toggleAOIVisibility;
-    // [蹂寃? ??대㉧ ?좉? 踰꾪듉: ??긽 ON?대?濡?鍮꾪솢?깊솕
+    // [변경] 타이머 토글 버튼: 항상 ON이므로 비활성화
     if (btnTimer) {
         btnTimer.disabled = true;
         btnTimer.classList.add('is-on');
@@ -960,13 +960,13 @@ function showReadingLayout() {
     if (btnReplay) { btnReplay.disabled = false; btnReplay.onclick = startReplay; }
     if (btnDbg)    btnDbg.onclick    = toggleAOIDebug;
 
-    // 臾몄젣 ?대퉬寃뚯씠??踰꾪듉 ?곌껐
+    // 문제 내비게이션 버튼 연결
     const btnPrev = document.getElementById('btnPrevQ');
     const btnNext = document.getElementById('btnNextQ');
     if (btnPrev) btnPrev.onclick = () => navigateQuestion(-1);
     if (btnNext) btnNext.onclick = () => navigateQuestion(1);
 
-    // ?좎? ?대┃ ?좏깮
+    // 선지 클릭 선택
     document.querySelectorAll('.choice-list li').forEach(li => {
         li.onclick = (e) => {
             const list = li.closest('.choice-list');
@@ -976,7 +976,7 @@ function showReadingLayout() {
         };
     });
 
-    // ?? AOI ?붾쾭洹?HUD DOM ?앹꽦 (?놁쑝硫??앹꽦) ??
+    // ── AOI 디버그 HUD DOM 생성 (없으면 생성) ──
     if (!document.getElementById('aoiDebugHud')) {
         const hud = document.createElement('div');
         hud.id = 'aoiDebugHud';
@@ -989,18 +989,18 @@ function showReadingLayout() {
         ].join(';');
         document.body.appendChild(hud);
     }
-    // _aoiDebugVisible: ?낇빐 紐⑤뱶 吏꾩엯 ???먮룞 ON ?쒓굅 (?④? ?좎?)
+    // _aoiDebugVisible: 독해 모드 진입 시 자동 ON 제거 (숨김 유지)
     if (btnDbg) { btnDbg.classList.add('is-on'); btnDbg.classList.remove('is-off'); }
 
-    setStatus('Eye tracking active ???낇빐 紐⑤뱶');
-    logI('reading', `?낇빐 ?덉씠?꾩썐 ?쒖꽦??);
+    setStatus('Eye tracking active — 독해 모드');
+    logI('reading', `독해 레이아웃 활성화`);
 }
 
-// ?????????????????????????????????????????????????????????????????????????????
-// 짠14-B. 臾몄젣 ?대퉬寃뚯씠??
-// ?????????????????????????????????????????????????????????????????????????????
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-B. 문제 내비게이션
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** qIdx踰?臾몄젣瑜??쒖떆?섍퀬 UI ?곹깭瑜?媛깆떊?쒕떎. */
+/** qIdx번 문제를 표시하고 UI 상태를 갱신한다. */
 function showQuestion(qIdx) {
     const blocks = Array.from(document.querySelectorAll('.question-block'));
     blocks.forEach((el, i) => el.classList.toggle('q-current', i === qIdx));
@@ -1014,15 +1014,15 @@ function showQuestion(qIdx) {
     if (btnPrev) btnPrev.disabled = (qIdx === 0);
     if (btnNext) {
         const isLast = qIdx === _TOTAL_QUESTIONS - 1;
-        btnNext.textContent = isLast ? '醫낅즺' : '?ㅼ쓬臾몄젣 ??;
+        btnNext.textContent = isLast ? '종료' : '다음문제 →';
         btnNext.classList.toggle('nav-next', !isLast);
         btnNext.classList.toggle('nav-end',  isLast);
     }
 
-    // ?꾩옱 臾몄젣 AOI留??ы븿?섎룄濡?紐⑸줉 媛깆떊
+    // 현재 문제 AOI만 포함하도록 목록 갱신
     buildAOIList();
 
-    // ?? ?좎? ?대┃ ???좏깮 ?쒖떆 (蹂寃?媛?? ?뺣떟 ?쇰뱶諛??놁쓬) ??
+    // ── 선지 클릭 → 선택 표시 (변경 가능, 정답 피드백 없음) ──
     const currentBlock = blocks[qIdx];
     if (!currentBlock) return;
     const choiceList = currentBlock.querySelector('.choice-list');
@@ -1035,21 +1035,21 @@ function showQuestion(qIdx) {
             li.classList.add('selected');
             const elapsed = _sessionStartTime ? Date.now() - _sessionStartTime : 0;
             _userAnswers[qIdx] = { choice: idx + 1, t: elapsed };
-            logI('answer', `Q${qIdx} ?듭? ?좏깮: ${idx+1}踰?(t=${elapsed}ms)`);
+            logI('answer', `Q${qIdx} 답지 선택: ${idx+1}번 (t=${elapsed}ms)`);
         };
     });
 }
 
 /**
- * ?댁쟾/?ㅼ쓬 臾몄젣濡??대룞?쒕떎.
- * delta: -1(?댁쟾) / +1(?ㅼ쓬)
- * '?ㅼ쓬臾몄젣' 踰꾪듉??留덉?留?臾몄젣?먯꽌 ?뚮━硫??몄뀡 醫낅즺.
+ * 이전/다음 문제로 이동한다.
+ * delta: -1(이전) / +1(다음)
+ * '다음문제' 버튼이 마지막 문제에서 눌리면 세션 종료.
  */
 function navigateQuestion(delta) {
-    // ?꾩옱 臾몄젣 AOI ?꾩쟻媛?諛??뚮몢由?吏?곌린 (?대퉬 = AOI 醫낅즺)
+    // 현재 문제 AOI 누적값 및 테두리 지우기 (내비 = AOI 종료)
     const curAoiId = `q-${_currentQIdx + 1}`;
-    delete _aoiDwellAccum[curAoiId];   // [FIX] _aoiEnterTime ??_aoiDwellAccum
-    delete _aoiLastHitTs[curAoiId];    // [FIX] _aoiLastHitTime ??_aoiLastHitTs
+    delete _aoiDwellAccum[curAoiId];   // [FIX] _aoiEnterTime → _aoiDwellAccum
+    delete _aoiLastHitTs[curAoiId];    // [FIX] _aoiLastHitTime → _aoiLastHitTs
     _aoiBorderOn.delete(curAoiId);
     const curEl = document.querySelector(`[data-aoi="${curAoiId}"]`);
     if (curEl) _removeAOIBorder(curEl);
@@ -1065,39 +1065,39 @@ function navigateQuestion(delta) {
 
 
 
-// ?????????????????????????????????????????????????????????????????????????????
-// 짠14-C. AOI 紐⑸줉 援ъ꽦 + ?쒖쎇 ?먯젙
-// ?????????????????????????????????????????????????????????????????????????????
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-C. AOI 목록 구성 + 드웰 판정
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 吏臾?臾몃떒 ?꾩껜 + ?꾩옱 ?쒖떆 以묒씤 臾몄젣 釉붾줉留?_aoiElements???섏쭛.
+ * 지문 문단 전체 + 현재 표시 중인 문제 블록만 _aoiElements에 수집.
  */
 function buildAOIList() {
     const paras = Array.from(document.querySelectorAll('.passage-para'));
     const curQ  = document.querySelector(`.question-block[data-qnum="${_currentQIdx}"]`);
     _aoiElements = curQ ? [...paras, curQ] : paras;
-    logI('reading', `AOI 紐⑸줉: ${_aoiElements.map(el => el.dataset.aoi).join(', ')}`);
+    logI('reading', `AOI 목록: ${_aoiElements.map(el => el.dataset.aoi).join(', ')}`);
 }
 
 
 
-/** 紐⑤뱺 AOI ?뚮몢由??댁젣 諛??쒖쎇 ?곹깭 珥덇린??*/
+/** 모든 AOI 테두리 해제 및 드웰 상태 초기화 */
 function clearAllAOI() {
     _aoiElements.forEach(el => _removeAOIBorder(el));
     _aoiDwellAccum = {};
     _aoiLastHitTs  = {};
     _aoiBorderOn.clear();
-    logI('aoi', 'clearAllAOI: 紐⑤뱺 ?뚮몢由??쒓굅, ?꾩쟻媛?由ъ뀑');
+    logI('aoi', 'clearAllAOI: 모든 테두리 제거, 누적값 리셋');
 }
 
-// ???????????????????????????????????????????????????????????????????????????????
-// 짠14-D-1. AOI ?ㅼ떆媛??붾쾭洹?HUD
-// ???????????????????????????????????????????????????????????????????????????????
+// ───────────────────────────────────────────────────────────────────────────────
+// §14-D-1. AOI 실시간 디버그 HUD
+// ───────────────────────────────────────────────────────────────────────────────
 
 /**
- * ?ㅼ떆媛?AOI ?곹깭瑜??붾㈃ ?고븯?⑥뿉 ?쒖떆?섎뒗 ?붾쾭洹?HUD.
- * - ?쒖꽑 醫뚰몴 / trackingState / 媛?AOI ?쒖쎇 吏꾪뻾諛?/ ?뚮몢由?耳쒖쭊 紐⑸줉
- * - ?낇빐 紐⑤뱶 吏꾩엯 ???먮룞 ?쒖떆, [DBG] 踰꾪듉?쇰줈 ?좉?
+ * 실시간 AOI 상태를 화면 우하단에 표시하는 디버그 HUD.
+ * - 시선 좌표 / trackingState / 각 AOI 드웰 진행바 / 테두리 켜진 목록
+ * - 독해 모드 진입 시 자동 표시, [DBG] 버튼으로 토글
  */
 function _updateAOIDebugHud(gazeX, gazeY, currentHit, now) {
     const hud = document.getElementById('aoiDebugHud');
@@ -1105,34 +1105,34 @@ function _updateAOIDebugHud(gazeX, gazeY, currentHit, now) {
     if (!_aoiDebugVisible) { hud.style.display = 'none'; return; }
     hud.style.display = 'block';
 
-    const stNames = ['?꿕K', '?좑툘LOW', '?똗NSUP', '?똍OFACE'];
+    const stNames = ['✅OK', '⚠️LOW', '❌UNSUP', '❌NOFACE'];
     const st      = stNames[gazeState.trackingState] ?? `?(${gazeState.trackingState})`;
 
     const lines = [
-        `?렞 AOI ?붾쾭洹?[?꾩쟻?쒖쎇 v2]`,
-        `?쒖꽑: (${gazeX?.toFixed(0) ?? '-'}, ${gazeY?.toFixed(0) ?? '-'})  ${st}`,
-        `?곸뿭 ON: ${_aoiVisible}  |  ?붿냼: ${_aoiElements.length}媛?,
-        `?덊듃: [${[...currentHit].join(', ') || '-'}]`,
-        `?뚮몢由? [${[..._aoiBorderOn].join(', ') || '-'}]`,
-        `?? ?꾩쟻 ?묒떆 (紐⑺몴 ${_AOI_DWELL_MS}ms ??)`
+        `🎯 AOI 디버그 [누적드웰 v2]`,
+        `시선: (${gazeX?.toFixed(0) ?? '-'}, ${gazeY?.toFixed(0) ?? '-'})  ${st}`,
+        `영역 ON: ${_aoiVisible}  |  요소: ${_aoiElements.length}개`,
+        `히트: [${[...currentHit].join(', ') || '-'}]`,
+        `테두리: [${[..._aoiBorderOn].join(', ') || '-'}]`,
+        `── 누적 응시 (목표 ${_AOI_DWELL_MS}ms ──)`
     ];
 
     _aoiElements.forEach(el => {
         const id     = el.dataset.aoi;
-        const accum  = _aoiDwellAccum[id] || 0;          // ?꾩쟻媛?
+        const accum  = _aoiDwellAccum[id] || 0;          // 누적값
         const pct    = Math.round(Math.min(accum / _AOI_DWELL_MS, 1) * 10);
-        const bar    = '??.repeat(pct) + '??.repeat(10 - pct);
-        const inHit  = currentHit.has(id)   ? '?몓' : '  ';
-        const onBrd  = _aoiBorderOn.has(id)  ? '?윪' : '  ';
+        const bar    = '█'.repeat(pct) + '░'.repeat(10 - pct);
+        const inHit  = currentHit.has(id)   ? '👁' : '  ';
+        const onBrd  = _aoiBorderOn.has(id)  ? '🟩' : '  ';
         const lastTs = _aoiLastHitTs[id];
         const awaySec = lastTs ? ((now - lastTs) / 1000).toFixed(1) + 's' : '-';
-        lines.push(`${onBrd}${inHit} ${id.padEnd(8)} ${bar} ${accum}ms (?댄깉:${awaySec})`);
+        lines.push(`${onBrd}${inHit} ${id.padEnd(8)} ${bar} ${accum}ms (이탈:${awaySec})`);
     });
 
     hud.textContent = lines.join('\n');
 }
 
-/** AOI ?붾쾭洹?HUD ?좉? */
+/** AOI 디버그 HUD 토글 */
 function toggleAOIDebug() {
     _aoiDebugVisible = !_aoiDebugVisible;
     const btn = document.getElementById('btnToggleDebug');
@@ -1144,9 +1144,9 @@ function toggleAOIDebug() {
     if (hud) hud.style.display = _aoiDebugVisible ? 'block' : 'none';
 }
 
-// ?????????????????????????????????????????????????????????????????????????????
-// 짠14-D. ?대컮 ?좉? ?⑥닔
-// ?????????????????????????????????????????????????????????????????????????????
+// ─────────────────────────────────────────────────────────────────────────────
+// §14-D. 툴바 토글 함수
+// ─────────────────────────────────────────────────────────────────────────────
 
 function toggleGazeVisibility() {
     _gazeVisible = !_gazeVisible;
@@ -1160,7 +1160,7 @@ function toggleGazeVisibility() {
         btn.classList.toggle('is-off', !_gazeVisible);
     }
     if (!_gazeVisible) clearAllAOI();
-    logI('reading', `?쒖꽑 ?쒖떆: ${_gazeVisible ? 'ON' : 'OFF'}`);
+    logI('reading', `시선 표시: ${_gazeVisible ? 'ON' : 'OFF'}`);
 }
 
 function toggleAOIVisibility() {
@@ -1171,7 +1171,7 @@ function toggleAOIVisibility() {
         btn.classList.toggle('is-off', !_aoiVisible);
     }
     if (!_aoiVisible) clearAllAOI();
-    logI('reading', `?곸뿭?쒖떆: ${_aoiVisible ? 'ON' : 'OFF'}`);
+    logI('reading', `영역표시: ${_aoiVisible ? 'ON' : 'OFF'}`);
 }
 
 function toggleTimer() {
@@ -1196,14 +1196,14 @@ function toggleTimer() {
         clearInterval(_timerInterval);
         _timerInterval = null;
     }
-    logI('reading', `??대㉧: ${_timerVisible ? 'ON' : 'OFF'}`);
+    logI('reading', `타이머: ${_timerVisible ? 'ON' : 'OFF'}`);
 }
 
 
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠14-E. ?쒖꽑 由ы뵆?덉씠 v2 (臾몃떒 ?ш컖??+ 臾몄젣 ?띿뒪??
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-E. 시선 리플레이 v2 (문단 사각형 + 문제 텍스트)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function fmtMs(ms) {
     const s = Math.floor(ms / 1000);
@@ -1218,75 +1218,71 @@ function _el(tag, text, style) {
 }
 
 function startReplay() {
-    if (_gazeLog.length === 0) { logW('replay', '\uae30\ub85d\ub41c \uc2dc\uc120 \ub370\uc774\ud130 \uc5c6\uc74c'); return; }
+    if (_gazeLog.length === 0) { logW('replay', '기록된 시선 데이터 없음'); return; }
     if (_replayActive) { stopReplay(); return; }
 
     const snap    = _gazeLog.slice();
     const totalMs = snap[snap.length - 1].t;
     const SCALE   = 0.67;
 
-    // ?? \uc6d0\ubcf8 DOM \uc704\uce58 \uce21\uc815 ??
+    // ── 원본 패널 위치 측정 (시선 좌표 변환에 사용) ──
     const readingPanels = document.getElementById('readingPanels');
     const passageEl     = document.getElementById('passagePanel');
-    if (!readingPanels || !passageEl) { logW('replay', 'readingPanels \uc5c6\uc74c'); return; }
+    if (!readingPanels || !passageEl) { logW('replay', 'readingPanels 없음'); return; }
 
-    const panelsBcr  = readingPanels.getBoundingClientRect();
+    const panelsBcr   = readingPanels.getBoundingClientRect();
     const PANELS_TOP  = panelsBcr.top;
     const PANELS_LEFT = panelsBcr.left;
 
-    // ?? \ubaa8\ub4e0 question-block \ud45c\uc2dc \ud6c4 \ud074\ub860 ??
+    // ── 모든 question-block 표시 후 DOM 클론 ──
     const qBlocks  = Array.from(document.querySelectorAll('.question-block'));
     const savedDsp = qBlocks.map(b => b.style.display);
     qBlocks.forEach(b => { b.style.display = 'block'; });
 
     const cloneRoot = readingPanels.cloneNode(true);
 
-    // \uc6d0\ubcf8 \ubcf5\uc6d0
-    qBlocks.forEach((b, i) => { b.style.display = savedDsp[i]; });
+    qBlocks.forEach((b, i) => { b.style.display = savedDsp[i]; }); // 원본 복원
 
-    // \ud074\ub860 \ub0b4 \ub808\ud37c\ub7f0\uc2a4 \ud655\ubcf4 (id \uc81c\uac70 \uc804)
-    const clonedPassage  = cloneRoot.querySelector('#passagePanel');
-    const clonedQVP      = cloneRoot.querySelector('#questionViewport');
-    const clonedQBlocks  = Array.from(cloneRoot.querySelectorAll('.question-block'));
+    // 클론 내 참조 확보 (id 제거 전)
+    const clonedPassage = cloneRoot.querySelector('#passagePanel');
+    const clonedQVP     = cloneRoot.querySelector('#questionViewport');
+    const clonedQBlocks = Array.from(cloneRoot.querySelectorAll('.question-block'));
 
-    // \uc911\ubcf5 id \uc81c\uac70
+    // 중복 id 제거
     cloneRoot.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
 
-    // \uccab \ubc88\uc9f8 \ubb38\uc81c\ub9cc \ud45c\uc2dc
+    // 첫 번째 문제만 표시
     clonedQBlocks.forEach((b, i) => { b.style.display = i === 0 ? 'block' : 'none'; });
 
-    // ?? \uc624\ubc84\ub808\uc774 \ube4c\ub4dc ??
+    // ── 오버레이 구성 ──
     const ovl = document.createElement('div');
     ovl.id = '_rplOvl';
     ovl.style.cssText = 'position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;overflow:hidden;background:#07091a;font-family:Inter,sans-serif';
 
-    // \ucf58\ud150\uce20 \uc601\uc5ed (\uc2a4\ucf00\uc77c\ub41c \ud328\ub110 + \uc2dc\uc120 \ub3f7)
+    // 콘텐츠 영역 (스케일 패널 + 시선 dot)
     const contentArea = document.createElement('div');
     contentArea.style.cssText = 'flex:1;position:relative;overflow:hidden';
 
-    // 67% \uc2a4\ucf00\uc77c \ub798\ud37c
+    // 67% 스케일 래퍼
     const scaleInner = document.createElement('div');
-    const scalePct   = (100 / SCALE).toFixed(2);
+    const pct = (100 / SCALE).toFixed(2);
     scaleInner.style.cssText = [
         `transform:scale(${SCALE})`,
         'transform-origin:top left',
-        `width:${scalePct}%`,
-        `height:${scalePct}%`,
+        `width:${pct}%`,
+        `height:${pct}%`,
         'pointer-events:none',
         'position:absolute',
-        'top:0',
-        'left:0',
+        'top:0', 'left:0'
     ].join(';');
     scaleInner.appendChild(cloneRoot);
     contentArea.appendChild(scaleInner);
 
-    // \uc2dc\uc120 dot
+    // 시선 dot
     const dot = document.createElement('div');
-    dot.id = '_rplDot';
     dot.style.cssText = [
         'position:absolute',
-        'width:20px',
-        'height:20px',
+        'width:20px', 'height:20px',
         'border-radius:50%',
         'background:radial-gradient(circle,rgba(255,220,50,.95)20%,rgba(255,160,0,.7)70%)',
         'border:2px solid #ffd632',
@@ -1294,35 +1290,32 @@ function startReplay() {
         'transform:translate(-50%,-50%)',
         'pointer-events:none',
         'z-index:30',
-        'display:none',
+        'display:none'
     ].join(';');
     contentArea.appendChild(dot);
-
     ovl.appendChild(contentArea);
 
-    // ?? \ucee8\ud2b8\ub864 \ubc14 (仙띯▦?ub2e8) ??
+    // ── 하단 컨트롤 바 ──
     const ctrl = document.createElement('div');
     ctrl.style.cssText = 'height:52px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 18px;background:rgba(7,9,26,.97);border-top:1px solid rgba(108,123,255,.2)';
 
     const badge = document.createElement('span');
     badge.style.cssText = 'font:700 13px/1 Inter,sans-serif;color:#e8ecf4;letter-spacing:.03em;white-space:nowrap';
-    badge.textContent = '?몓 \ub9ac\ud50c\ub808\uc774';
+    badge.textContent = '리플레이';
 
     const tLabel = document.createElement('span');
-    tLabel.id = '_rplTimeLabel';
     tLabel.style.cssText = 'font:600 11px Inter,sans-serif;color:#64748b;white-space:nowrap;min-width:88px';
     tLabel.textContent = '0:00 / ' + fmtMs(totalMs);
 
     const progTrack = document.createElement('div');
     progTrack.style.cssText = 'flex:1;height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden';
     const fill = document.createElement('div');
-    fill.id = '_rplFill';
     fill.style.cssText = 'height:100%;width:0%;background:linear-gradient(90deg,#6c7bff,#a78bfa);border-radius:2px;transition:width .08s linear';
     progTrack.appendChild(fill);
 
     const closeBtn = document.createElement('button');
     closeBtn.style.cssText = 'padding:6px 16px;font:600 11px Inter,sans-serif;border-radius:20px;border:1.5px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#94a3b8;cursor:pointer';
-    closeBtn.textContent = '\u2715 \ub2eb\uae30';
+    closeBtn.textContent = '✕ 닫기';
     closeBtn.onclick = stopReplay;
 
     [badge, tLabel, progTrack, closeBtn].forEach(n => ctrl.appendChild(n));
@@ -1332,7 +1325,7 @@ function startReplay() {
 
     _replayActive = true;
     const btn = document.getElementById('btnReplay');
-    if (btn) { btn.textContent = '\u25a0 \uc911\ub2e8'; btn.classList.add('replay-active'); }
+    if (btn) { btn.textContent = '■ 중단'; btn.classList.add('replay-active'); }
 
     let replayIdx = 0;
     let lastQIdx  = -1;
@@ -1347,7 +1340,7 @@ function startReplay() {
 
         const frame = snap[Math.max(0, replayIdx - 1)];
 
-        // \ubb38\uc81c \ub514\uc2a4\ud50c\ub808\uc774 \ub3d9\uae30\ud654
+        // 문제 전환
         if (typeof frame.qIdx === 'number' && frame.qIdx !== lastQIdx) {
             lastQIdx = frame.qIdx;
             clonedQBlocks.forEach((b, i) => {
@@ -1355,34 +1348,27 @@ function startReplay() {
             });
         }
 
-        // \uc2a4\ud06c\ub864 \ub3d9\uae30\ud654
-        if (clonedPassage && typeof frame.scrl === 'number') {
-            clonedPassage.scrollTop = frame.scrl;
-        }
-        if (clonedQVP && typeof frame.qscrl === 'number') {
-            clonedQVP.scrollTop = frame.qscrl;
-        }
+        // 스크롤 동기화
+        if (clonedPassage && typeof frame.scrl === 'number') clonedPassage.scrollTop = frame.scrl;
+        if (clonedQVP    && typeof frame.qscrl === 'number') clonedQVP.scrollTop    = frame.qscrl;
 
-        // \uc2dc\uc120 dot \uc704\uce58 (\uc2a4\ucf00\uc77c \uc88c\ud45c)
+        // 시선 dot 위치 (스케일 좌표 변환)
         if (typeof frame.x === 'number' && frame.s <= 1) {
-            const dx = (frame.x - PANELS_LEFT) * SCALE;
-            const dy = (frame.y - PANELS_TOP)  * SCALE;
-            dot.style.left    = dx + 'px';
-            dot.style.top     = dy + 'px';
+            dot.style.left    = ((frame.x - PANELS_LEFT) * SCALE) + 'px';
+            dot.style.top     = ((frame.y - PANELS_TOP)  * SCALE) + 'px';
             dot.style.display = 'block';
         }
 
-        // \uc9c4\ud589\ubc14
-        const pct = Math.min(elapsed / totalMs * 100, 100);
-        fill.style.width = pct + '%';
+        // 진행바
+        fill.style.width = Math.min(elapsed / totalMs * 100, 100) + '%';
         tLabel.textContent = fmtMs(elapsed) + ' / ' + fmtMs(totalMs);
 
         _replayRAF = requestAnimationFrame(step);
     }
 
     _replayRAF = requestAnimationFrame(step);
-    setStatus(`\u25b6 \ub9ac\ud50c\ub808\uc774 \uc911 (\uc885 ${Math.ceil(totalMs / 1000)}\ucd08)...`);
-    logI('replay', `\ub9ac\ud50c\ub808\uc774 \uc2dc\uc791: ${snap.length}\ud504\ub808\uc784, ${Math.ceil(totalMs / 1000)}\ucd08`);
+    setStatus(`▶ 리플레이 중 (총 ${Math.ceil(totalMs / 1000)}초)...`);
+    logI('replay', `리플레이 시작: ${snap.length}프레임, ${Math.ceil(totalMs / 1000)}초`);
 }
 
 function stopReplay() {
@@ -1393,21 +1379,21 @@ function stopReplay() {
     if (ovl) ovl.remove();
 
     const btn = document.getElementById('btnReplay');
-    if (btn) { btn.textContent = '\u25b6 \ub9ac\ud50c\ub808\uc774'; btn.classList.remove('replay-active'); }
+    if (btn) { btn.textContent = '▶ 리플레이'; btn.classList.remove('replay-active'); }
 
     clearAllAOI();
     showQuestion(_currentQIdx);
-    setStatus('\ub9ac\ud50c\ub808\uc774 \uc644\ub8cc.');
-    logI('replay', '\ub9ac\ud50c\ub808\uc774 \uc885\ub8cc');
+    setStatus('리플레이 완료.');
+    logI('replay', '리플레이 종료');
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠13. Safe Shutdown (deinitialize 1珥??쒕젅??臾몄젣 ?닿껐)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §13. Safe Shutdown (deinitialize 1초 딜레이 문제 해결)
+// ═══════════════════════════════════════════════════════════════════════════════
 async function shutdown() {
     logI('sys', 'Shutting down...');
 
-    // 1. ?꾨젅??罹≪쿂 利됱떆 以묐떒
+    // 1. 프레임 캡처 즉시 중단
     _trackingActive = false;
     if (_rawSeeso?.thread) {
         _rawSeeso.thread.stop();
@@ -1418,31 +1404,31 @@ async function shutdown() {
         _rawSeeso.debugThread.release();
     }
 
-    // 2. 移대찓???몃옓 以묒?
+    // 2. 카메라 트랙 중지
     if (_rawSeeso?.track) {
         _rawSeeso.track.stop();
         _rawSeeso.track = null;
     }
 
-    // 3. 肄쒕갚 ?쒓굅  
+    // 3. 콜백 제거  
     try {
         _seeso?.removeGazeCallback?.(onGaze);
         _seeso?.removeDebugCallback?.(onDebug);
     } catch (_) { }
 
-    // 4. SDK deinitialize (?대? setTimeout 1珥?
+    // 4. SDK deinitialize (내부 setTimeout 1초)
     try { _seeso?.deinitialize?.(); } catch (_) { }
 
-    // 5. 1.5珥??湲?(SDK 1珥?+ 留덉쭊)
+    // 5. 1.5초 대기 (SDK 1초 + 마진)
     await new Promise(r => setTimeout(r, 1500));
 
-    // 6. ?깃???李몄“ ?댁젣
+    // 6. 싱글턴 참조 해제
     try {
         if (_rawSeeso?.constructor?.gaze) _rawSeeso.constructor.gaze = null;
         if (_rawSeeso) _rawSeeso.initialized = false;
     } catch (_) { }
 
-    // 7. ?몃? 移대찓???ㅽ듃由??뺣━
+    // 7. 외부 카메라 스트림 정리
     if (_mediaStream) {
         _mediaStream.getTracks().forEach(t => t.stop());
         _mediaStream = null;
@@ -1455,9 +1441,9 @@ async function shutdown() {
 
 window.addEventListener('beforeunload', () => { shutdown(); });
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠14. Watchdog (2珥?heartbeat)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14. Watchdog (2초 heartbeat)
+// ═══════════════════════════════════════════════════════════════════════════════
 let _lastGazeAt = 0;
 const _origOnGaze = onGaze;
 // Wrap gaze callback to track timestamp
@@ -1476,15 +1462,15 @@ setInterval(() => {
     }
 }, 2000);
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠16. [iOS] Periodic SDK Restart ??WASM/GPU 硫붾え由??꾩닔 ?꾩쟾 諛⑹?
+// ═══════════════════════════════════════════════════════════════════════════════
+// §16. [iOS] Periodic SDK Restart — WASM/GPU 메모리 누수 완전 방지
 //
-//   ?먮━:
-//   - getImageData()??Web API ?쒓퀎濡?留??꾨젅??~1.2MB ?좊떦 (?고쉶 遺덇?)
-//   - iOS Safari GC媛 30fps ?좊떦 ?띾룄瑜??곕씪?≪? 紐삵빐 ~80珥???OOM Kill
-//   - 50珥덈쭏??SDK瑜??꾩쟾???ъ떆?묓븯???꾩쟻 硫붾え由щ? 0?쇰줈 由ъ뀑
-//   - 罹섎━釉뚮젅?댁뀡 ?곗씠?곕뒗 localStorage?먯꽌 蹂듭썝 ???ъ슜??寃쏀뿕 ?좎?
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+//   원리:
+//   - getImageData()는 Web API 한계로 매 프레임 ~1.2MB 할당 (우회 불가)
+//   - iOS Safari GC가 30fps 할당 속도를 따라잡지 못해 ~80초 후 OOM Kill
+//   - 50초마다 SDK를 완전히 재시작하여 누적 메모리를 0으로 리셋
+//   - 캘리브레이션 데이터는 localStorage에서 복원 → 사용자 경험 유지
+// ═══════════════════════════════════════════════════════════════════════════════
 let _restartTimer = null;
 let _isRestarting = false;
 let _restartCount = 0;
@@ -1507,41 +1493,41 @@ async function periodicRestart() {
     _isRestarting = true;
     _restartCount++;
 
-    logI('restart', `Periodic restart #${_restartCount} starting...`);
+    logI('restart', `═══ Periodic restart #${_restartCount} starting ═══`);
     setStatus('Memory cleanup... (auto-restart)');
 
-    // ?? 1. ?몃옒??以묒? ??
+    // ── 1. 트래킹 중지 ──
     _trackingActive = false;
     try {
         if (_rawSeeso?.thread) { _rawSeeso.thread.stop(); _rawSeeso.thread.release(); _rawSeeso.thread = null; }
         if (_rawSeeso?.debugThread) { _rawSeeso.debugThread.stop(); _rawSeeso.debugThread.release(); _rawSeeso.debugThread = null; }
     } catch (e) { logW('restart', `Stop thread: ${e.message}`); }
 
-    // ?? 2. 移대찓???몃옓 ?댁젣 ??
+    // ── 2. 카메라 트랙 해제 ──
     try {
         if (_rawSeeso?.track) { _rawSeeso.track.stop(); _rawSeeso.track = null; }
         if (_rawSeeso?.imageCapture) { _rawSeeso.imageCapture = null; }
     } catch (_) { }
 
-    // ?? 3. 肄쒕갚 ?쒓굅 ??
+    // ── 3. 콜백 제거 ──
     try {
         _seeso?.removeGazeCallback?.(onGazeWrapped);
         _seeso?.removeDebugCallback?.(onDebug);
     } catch (_) { }
 
-    // ?? 4. SDK deinitialize (?대? 1珥?setTimeout?쇰줈 WASM ?뺣━) ??
+    // ── 4. SDK deinitialize (내부 1초 setTimeout으로 WASM 정리) ──
     try { _seeso?.deinitialize?.(); } catch (_) { }
 
-    // ?? 5. 移대찓???ㅽ듃由??댁젣 ??
+    // ── 5. 카메라 스트림 해제 ──
     if (_mediaStream) {
         _mediaStream.getTracks().forEach(t => t.stop());
         _mediaStream = null;
     }
 
-    // ?? 6. 2珥??湲?(SDK ?대? 1珥?+ GC 留덉쭊) ??
+    // ── 6. 2초 대기 (SDK 내부 1초 + GC 마진) ──
     await new Promise(r => setTimeout(r, 2000));
 
-    // ?? 7. ?깃???+ 李몄“ ?꾩쟾 ?댁젣 ??
+    // ── 7. 싱글턴 + 참조 완전 해제 ──
     try {
         if (_rawSeeso?.constructor?.gaze) _rawSeeso.constructor.gaze = null;
         if (_rawSeeso) {
@@ -1556,7 +1542,7 @@ async function periodicRestart() {
 
     logI('restart', 'Old SDK released. Reinitializing...');
 
-    // ?? 8. 移대찓???ы쉷????
+    // ── 8. 카메라 재획득 ──
     const camOk = await ensureCamera();
     if (!camOk) {
         logE('restart', 'Camera re-acquisition FAILED');
@@ -1564,7 +1550,7 @@ async function periodicRestart() {
         return;
     }
 
-    // ?? 9. SDK ?ъ큹湲고솕 ??
+    // ── 9. SDK 재초기화 ──
     const sdkOk = await initSDK();
     if (!sdkOk) {
         logE('restart', 'SDK re-init FAILED');
@@ -1572,7 +1558,7 @@ async function periodicRestart() {
         return;
     }
 
-    // ?? 10. ?몃옒???ъ떆????
+    // ── 10. 트래킹 재시작 ──
     _seeso.addGazeCallback(onGazeWrapped);
     _seeso.addDebugCallback(onDebug);
     const trackOk = _seeso.startTracking(_mediaStream);
@@ -1584,21 +1570,21 @@ async function periodicRestart() {
     _trackingActive = true;
     setPill(els.pillTrack, 'Track: running', 'ok');
 
-    // ?? 11. ?⑥튂 ?ъ쟻????
+    // ── 11. 패치 재적용 ──
     setTimeout(() => patchGrabFrameAsImageData(_rawSeeso), 300);
 
-    // ?? 12. 罹섎━釉뚮젅?댁뀡 蹂듭썝 (localStorage?먯꽌) ??
+    // ── 12. 캘리브레이션 복원 (localStorage에서) ──
     setTimeout(async () => {
         try {
             const saved = localStorage.getItem('eyetrack_cal_data');
             if (saved) {
                 const calData = JSON.parse(saved);
                 await _seeso.setCalibrationData(calData);
-                logI('restart', '??Calibration restored from localStorage');
+                logI('restart', '✅ Calibration restored from localStorage');
                 setPill(els.pillCal, 'Cal: restored', 'ok');
                 setStatus('Eye tracking active (auto-restarted)');
             } else {
-                logW('restart', 'No saved calibration ??user needs to recalibrate');
+                logW('restart', 'No saved calibration — user needs to recalibrate');
                 setStatus('Restart complete. Calibration needed.');
                 startCalibration();
             }
@@ -1608,16 +1594,16 @@ async function periodicRestart() {
         }
     }, 800);
 
-    logI('restart', `Restart #${_restartCount} complete.`);
+    logI('restart', `═══ Restart #${_restartCount} complete ═══`);
     _isRestarting = false;
 
-    // ?? ?ㅼ쓬 ?ъ떆???덉빟 ??
+    // ── 다음 재시작 예약 ──
     scheduleRestart();
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠15. Boot Sequence
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §15. Boot Sequence
+// ═══════════════════════════════════════════════════════════════════════════════
 
 // Recover crash log from previous session
 (function checkCrashLog() {
@@ -1638,14 +1624,14 @@ async function periodicRestart() {
 
 async function boot() {
     logI('boot', `Starting... Platform: ${IS_IOS ? 'iOS' : IS_SAFARI ? 'Safari' : 'Desktop'}`);
-    logI('boot', `Config: cam=${CONFIG.MAX_CAM_WIDTH}횞${CONFIG.MAX_CAM_HEIGHT} fps=${CONFIG.TARGET_FPS}`);
+    logI('boot', `Config: cam=${CONFIG.MAX_CAM_WIDTH}×${CONFIG.MAX_CAM_HEIGHT} fps=${CONFIG.TARGET_FPS}`);
 
     resizeCanvas();
 
-    // ?붴븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븮
-    // ?? [CRITICAL] Camera FIRST, then SDK ??matches TheBookWardens  ??
-    // ?? Safari/iOS may require active media context before SDK init ??
-    // ?싢븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븴
+    // ╔════════════════════════════════════════════════════════════════╗
+    // ║  [CRITICAL] Camera FIRST, then SDK — matches TheBookWardens  ║
+    // ║  Safari/iOS may require active media context before SDK init ║
+    // ╚════════════════════════════════════════════════════════════════╝
 
     // Step 1: Camera (must be first on iOS)
     setStatus('Requesting camera...');
@@ -1667,7 +1653,7 @@ async function boot() {
 
     if (!trackOk) {
         setPill(els.pillTrack, 'Track: failed', 'error');
-        setStatus('?좑툘 Tracking failed.');
+        setStatus('⚠️ Tracking failed.');
         return;
     }
 
@@ -1681,7 +1667,7 @@ async function boot() {
     setStatus('Preparing calibration...');
     setTimeout(() => {
         const calOk = startCalibration();
-        if (!calOk) setStatus('?좑툘 Calibration failed to start.');
+        if (!calOk) setStatus('⚠️ Calibration failed to start.');
     }, 1000);
 
     // Step 5: [iOS] Schedule periodic restart for memory cleanup
@@ -1694,7 +1680,7 @@ async function boot() {
 // Start button handler
 if (els.btnStart) {
     els.btnStart.onclick = () => {
-        // ?명듃濡????뚮컢???붾㈃?쇰줈 ?꾪솚
+        // 인트로 → 워밍업 화면으로 전환
         els.startScreen?.classList.add('hidden');
         document.getElementById('warmupScreen')?.classList.remove('hidden');
     };
@@ -1713,9 +1699,9 @@ if (btnWarmupStart) {
 
 logI('app', 'App loaded. Waiting for user to press Start.');
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠14-F-1. ?쒖꽑 怨꾩궛 ?⑥닔 5醫?
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-F-1. 시선 계산 함수 5종
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function computeDwellPerAOI(log) {
     const dwell = {};
@@ -1767,9 +1753,9 @@ function computeQPTransitions(log) {
     for (let i = 1; i < log.length; i++) {
         const p = log[i-1], c = log[i];
         if (isQ(p.aois) && isP(c.aois))
-            result.push({ t: c.t, dir: 'Q?뭁', fromAoi: (p.aois || [])[0] || '', toAoi: (c.aois || [])[0] || '' });
+            result.push({ t: c.t, dir: 'Q→P', fromAoi: (p.aois || [])[0] || '', toAoi: (c.aois || [])[0] || '' });
         else if (isP(p.aois) && isQ(c.aois))
-            result.push({ t: c.t, dir: 'P?뭂', fromAoi: (p.aois || [])[0] || '', toAoi: (c.aois || [])[0] || '' });
+            result.push({ t: c.t, dir: 'P→Q', fromAoi: (p.aois || [])[0] || '', toAoi: (c.aois || [])[0] || '' });
     }
     return result;
 }
@@ -1783,19 +1769,19 @@ function computeEfficiency(transitions, numQ) {
     const result = {};
     for (let qi = 1; qi <= numQ; qi++) {
         const k = `q-${qi}`, c = counts[k] || 0;
-        result[k] = c >= 4 ? '??쓬' : c >= 2 ? '蹂댄넻' : '?믪쓬';
+        result[k] = c >= 4 ? '낮음' : c >= 2 ? '보통' : '높음';
     }
     return result;
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠14-F-2. 紐⑤떖 ?쒖뼱 + Gemini AI ?몄텧
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-F-2. 모달 제어 + Gemini AI 호출
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function resetApiKey() {
     localStorage.removeItem('gemini_api_key');
     closeGazeGraph();
-    // ?좎떆 ???ㅼ떆 showGazeGraph ?몄텧 ??API Key 紐⑤떖 ?쒖떆
+    // 잠시 후 다시 showGazeGraph 호출 → API Key 모달 표시
     setTimeout(showGazeGraph, 150);
 }
 
@@ -1804,7 +1790,7 @@ function closeGazeGraph() {
 }
 
 async function showGazeGraph() {
-    if (!_gazeLog.length) { alert('?쒖꽑 ?곗씠?곌? ?놁뒿?덈떎. ?몄뀡??癒쇱? ?꾨즺?섏꽭??'); return; }
+    if (!_gazeLog.length) { alert('시선 데이터가 없습니다. 세션을 먼저 완료하세요.'); return; }
 
     const log     = _gazeLog.slice();
     const totalMs = log[log.length - 1].t;
@@ -1831,7 +1817,7 @@ async function showGazeGraph() {
         input.focus();
         btnSave.onclick = async () => {
             const k = input.value.trim();
-            if (!k) { alert('API Key瑜??낅젰?섏꽭??'); return; }
+            if (!k) { alert('API Key를 입력하세요.'); return; }
             localStorage.setItem('gemini_api_key', k);
             modal.classList.add('hidden');
             await _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, k);
@@ -1846,39 +1832,39 @@ async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regression
     const status = document.getElementById('gazeGraphStatus');
     if (!modal) return;
     modal.classList.remove('hidden');
-    if (status) status.textContent = 'AI 遺꾩꽍 以?..';
+    if (status) status.textContent = 'AI 분석 중...';
 
     let ai = { responseType: {}, fluencyBottleneck: {} };
     try {
         ai = await _requestGeminiAnalysis(apiKey, { dwell, fixCounts, regCounts, transitions, userAnswers: _userAnswers });
     } catch (e) {
-        logW('graph', 'Gemini ?ㅽ뙣: ' + e.message);
-        if (status) status.textContent = `AI ?ㅽ뙣: ${e.message} | ??蹂寃?踰꾪듉?쇰줈 ?ъ떆??;
+        logW('graph', 'Gemini 실패: ' + e.message);
+        if (status) status.textContent = `AI 실패: ${e.message} | 키 변경 버튼으로 재시도`;
     }
-    if (status && status.textContent === 'AI 遺꾩꽍 以?..') status.textContent = '';
+    if (status && status.textContent === 'AI 분석 중...') status.textContent = '';
 
     const canvas = document.getElementById('gazeGraphCanvas');
     if (canvas) drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, ai);
-    // 肄붿묶 由ы룷??諛깃렇?쇱슫???앹꽦
+    // 코칭 리포트 백그라운드 생성
     _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency, ai, apiKey);
 }
 
-// ?????????????????????????????????????????????????????????????????????????????
-// 짠AI 肄붿묶 由ы룷??
-// ?????????????????????????????????????????????????????????????????????????????
+// ─────────────────────────────────────────────────────────────────────────────
+// §AI 코칭 리포트
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency, ai, apiKey) {
     try {
-        logI('coaching', '肄붿묶 由ы룷???앹꽦 以?..');
+        logI('coaching', '코칭 리포트 생성 중...');
         const prompt = _buildCoachingPrompt(log, totalMs, dwell, fixCounts, regCounts, efficiency, ai);
         _coachingCache = await _requestCoachingReport(apiKey, prompt);
         const btn = document.getElementById('btnCoachingReport');
         if (btn) { btn.disabled = false; btn.classList.add('coaching-ready'); }
-        logI('coaching', '肄붿묶 由ы룷???꾨즺');
+        logI('coaching', '코칭 리포트 완료');
     } catch (e) {
-        logW('coaching', '肄붿묶 ?ㅽ뙣: ' + e.message);
+        logW('coaching', '코칭 실패: ' + e.message);
         _coachingCache = {
-            overall: `AI 肄붿묶 ?ㅽ뙣: ${e.message}`,
+            overall: `AI 코칭 실패: ${e.message}`,
             questions: [], speedCoaching: [], accuracyCoaching: []
         };
         const btn = document.getElementById('btnCoachingReport');
@@ -1893,9 +1879,9 @@ function _buildCoachingPrompt(log, totalMs, dwell, fixCounts, regCounts, efficie
 
     const paraLines = ['para-0','para-1','para-2','para-3'].map((k, i) => {
         const sec = ((dwell[k]||0)/1000).toFixed(1);
-        const rt  = (ai.responseType||{})[k] || '誘몃텇瑜?;
-        const bn  = (ai.fluencyBottleneck||{})[k] ? '蹂묐ぉ' : '?뺤긽';
-        return `  臾몃떒${i}: 泥대쪟${sec}珥? ?쎌꽭?댁뀡${fixCounts[k]||0}?? 由ш렇?덉뀡${regCounts[k]||0}?? ?좏삎=${rt}, ?좎갹??${bn}`;
+        const rt  = (ai.responseType||{})[k] || '미분류';
+        const bn  = (ai.fluencyBottleneck||{})[k] ? '병목' : '정상';
+        return `  문단${i}: 체류${sec}초, 픽세이션${fixCounts[k]||0}회, 리그레션${regCounts[k]||0}회, 유형=${rt}, 유창성=${bn}`;
     }).join('\n');
 
     const blocks   = Array.from(document.querySelectorAll('.question-block'));
@@ -1905,37 +1891,37 @@ function _buildCoachingPrompt(log, totalMs, dwell, fixCounts, regCounts, efficie
         const allLis   = Array.from(blk.querySelectorAll('.choice-list li'));
         const selLi    = blk.querySelector('.choice-list li.selected');
         const userCh   = selLi ? allLis.indexOf(selLi) + 1 : null;
-        const verdict  = userCh === null ? '誘몄꽑?? : userCh === correct ? '?뺣떟' : '?ㅻ떟';
+        const verdict  = userCh === null ? '미선택' : userCh === correct ? '정답' : '오답';
         const sec      = ((dwell[aoiKey]||0)/1000).toFixed(1);
-        const rt       = (ai.responseType||{})[aoiKey] || '誘몃텇瑜?;
-        return `  Q${qi}: ${verdict}(?좏깮${userCh||'-'}/?뺣떟${correct}), 泥대쪟${sec}珥? ?좏삎=${rt}, ?쎌꽭?댁뀡${fixCounts[aoiKey]||0}?? 由ш렇?덉뀡${regCounts[aoiKey]||0}??;
+        const rt       = (ai.responseType||{})[aoiKey] || '미분류';
+        return `  Q${qi}: ${verdict}(선택${userCh||'-'}/정답${correct}), 체류${sec}초, 유형=${rt}, 픽세이션${fixCounts[aoiKey]||0}회, 리그레션${regCounts[aoiKey]||0}회`;
     }).join('\n');
 
-    return `?섎뒫 援?뼱 ?낇빐 肄붿묶 ?꾨Ц媛?낅땲?? ?꾨옒 ?숈깮 ?쒖꽑 ?곗씠?곕? 遺꾩꽍?섏뿬 留욎땄??肄붿묶 由ы룷?몃? JSON?쇰줈留??묒꽦?섏꽭?? ?ㅻⅨ ?띿뒪?몃뒗 ?덈? ?ы븿?섏? 留덉꽭??
+    return `수능 국어 독해 코칭 전문가입니다. 아래 학생 시선 데이터를 분석하여 맞춤형 코칭 리포트를 JSON으로만 작성하세요. 다른 텍스트는 절대 포함하지 마세요.
 
-[?숈깮 ?쒖꽑 ?곗씠??
-珥??낇빐 ?쒓컙: ${totalSec}珥?
-?꾩껜 ?쎌꽭?댁뀡: ${totalFix}??
-?꾩껜 由ш렇?덉뀡(??뻾): ${totalReg}??
-?뺣났?⑥쑉?? ${(efficiency*100).toFixed(0)}%
+[학생 시선 데이터]
+총 독해 시간: ${totalSec}초
+전체 픽세이션: ${totalFix}회
+전체 리그레션(역행): ${totalReg}회
+왕복효율성: ${(efficiency*100).toFixed(0)}%
 
-[臾몃떒蹂?遺꾩꽍]
+[문단별 분석]
 ${paraLines}
 
-[臾몄젣蹂?遺꾩꽍]
+[문제별 분석]
 ${qLines}
 
-[異쒕젰 ?뺤떇 - ??JSON留?諛섑솚]
-{"overall":"2~3臾몄옣 醫낇빀吏꾨떒","questions":[{"qnum":0,"isCorrect":true,"strength":"?섑븳??1~2臾몄옣","weakness":"?꾩돩?댁젏 1~2臾몄옣","tip":"?꾨왂 1~2臾몄옣"},{"qnum":1,"isCorrect":false,"strength":"...","weakness":"...","tip":"..."},{"qnum":2,"isCorrect":true,"strength":"...","weakness":"...","tip":"..."}],"speedCoaching":["援ъ껜?곷갑踰?","諛⑸쾿2","諛⑸쾿3"],"accuracyCoaching":["諛⑸쾿1","諛⑸쾿2","諛⑸쾿3"]}`;
+[출력 형식 - 이 JSON만 반환]
+{"overall":"2~3문장 종합진단","questions":[{"qnum":0,"isCorrect":true,"strength":"잘한점 1~2문장","weakness":"아쉬운점 1~2문장","tip":"전략 1~2문장"},{"qnum":1,"isCorrect":false,"strength":"...","weakness":"...","tip":"..."},{"qnum":2,"isCorrect":true,"strength":"...","weakness":"...","tip":"..."}],"speedCoaching":["구체적방법1","방법2","방법3"],"accuracyCoaching":["방법1","방법2","방법3"]}`;
 }
 
 async function _requestCoachingReport(apiKey, prompt) {
     const MODEL = 'gemini-3.6-flash';
 
-    // JSON ?뺢퇋??異붿텧 (寃곌낵???ㅻ챸 ?띿뒪?멸? ?ㅼ뼱????덉쟾?섍쾶)
+    // JSON 정규식 추출 (결과에 설명 텍스트가 들어와도 안전하게)
     const extractJSON = raw => {
         const clean = raw.replace(/```json\n?/g, '').replace(/```/g, '').trim();
-        // 泥?踰덉㎏ '{' 遺??留덉?留?'}' 源뚯? 異붿텧
+        // 첫 번째 '{' 부터 마지막 '}' 까지 추출
         const m = clean.match(/\{[\s\S]*\}/);
         if (!m) throw new Error(`JSON not found in response. Raw: ${clean.slice(0, 200)}`);
         return JSON.parse(m[0]);
@@ -1949,7 +1935,7 @@ async function _requestCoachingReport(apiKey, prompt) {
             new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 30s')), 30000))
         ]);
         const raw = response.text ?? '';
-        logI('coaching', 'SDK ?묐떟 ?섏떊 (' + raw.length + '??');
+        logI('coaching', 'SDK 응답 수신 (' + raw.length + '자)');
         return extractJSON(raw);
     }
     // raw fetch fallback
@@ -1962,7 +1948,7 @@ async function _requestCoachingReport(apiKey, prompt) {
     if (res.ok) {
         const json = await res.json();
         const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-        logI('coaching', 'fetch ?묐떟 ?섏떊 (' + raw.length + '??');
+        logI('coaching', 'fetch 응답 수신 (' + raw.length + '자)');
         return extractJSON(raw);
     }
     const errTxt = await res.text().catch(() => '');
@@ -1975,26 +1961,26 @@ function showCoachingReport() {
     const rdPanels = document.getElementById('readingPanels');
     if (!panel) return;
 
-    // 吏臾?臾몄젣 ?⑤꼸 ?④린湲?(AI 肄붿묶留??쒖떆)
+    // 지문/문제 패널 숨기기 (AI 코칭만 표시)
     if (rdPanels) rdPanels.style.display = 'none';
     panel.classList.remove('hidden');
 
-    // ?대? 罹먯떆??寃쎌슦 諛붾줈 ?쒖떆
+    // 이미 캐시된 경우 바로 표시
     if (_coachingCache && _coachingCache.overall) {
         _renderCoachingReport(_coachingCache);
         return;
     }
 
-    // ?꾩쭅 ?앹꽦 ??????濡쒕뵫 ?쒖떆 ???먮룞 ?ㅽ뻾
-    if (crBody) crBody.innerHTML = '<div class="cr-loading">?봽 AI 肄붿묶 由ы룷???앹꽦 以?..</div>';
+    // 아직 생성 안 됨 → 로딩 표시 후 자동 실행
+    if (crBody) crBody.innerHTML = '<div class="cr-loading">🔄 AI 코칭 리포트 생성 중...</div>';
 
     const apiKey = localStorage.getItem('gemini_api_key') || '';
     if (!apiKey) {
-        if (crBody) crBody.innerHTML = '<div class="cr-loading">?좑툘 API ?ㅺ? ?놁뒿?덈떎. ?쒖꽑洹몃옒??踰꾪듉?쇰줈 ?ㅻ? ?낅젰??二쇱꽭??</div>';
+        if (crBody) crBody.innerHTML = '<div class="cr-loading">⚠️ API 키가 없습니다. 시선그래프 버튼으로 키를 입력해 주세요.</div>';
         return;
     }
     if (!_lastSessionSnap) {
-        if (crBody) crBody.innerHTML = '<div class="cr-loading">?좑툘 ?몄뀡 ?곗씠?곌? ?놁뒿?덈떎. ?몄뀡??癒쇱? ?꾨즺??二쇱꽭??</div>';
+        if (crBody) crBody.innerHTML = '<div class="cr-loading">⚠️ 세션 데이터가 없습니다. 세션을 먼저 완료해 주세요.</div>';
         return;
     }
     const { log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency } = _lastSessionSnap;
@@ -2016,13 +2002,13 @@ function _renderCoachingReport(data) {
 
     const qCards = (data.questions || []).map(q => {
         const cls   = q.isCorrect === true ? 'cr-correct' : q.isCorrect === false ? 'cr-wrong' : 'cr-unknown';
-        const badge = q.isCorrect === true ? '???뺣떟' : q.isCorrect === false ? '???ㅻ떟' : '燧?誘몄꽑??;
+        const badge = q.isCorrect === true ? '✅ 정답' : q.isCorrect === false ? '❌ 오답' : '⬜ 미선택';
         return `<div class="cr-q-card ${cls}">
             <div class="cr-q-header"><span class="cr-q-num">Q${q.qnum}</span><span class="cr-q-result">${badge}</span></div>
             <div class="cr-q-body">
-                <div class="cr-row"><span class="cr-lbl cr-green">?몟 ?섑븳 ??/span><span>${q.strength||'-'}</span></div>
-                <div class="cr-row"><span class="cr-lbl cr-orange">?뮕 媛쒖꽑??/span><span>${q.weakness||'-'}</span></div>
-                <div class="cr-row"><span class="cr-lbl cr-blue">?렞 ?꾨왂</span><span>${q.tip||'-'}</span></div>
+                <div class="cr-row"><span class="cr-lbl cr-green">👍 잘한 점</span><span>${q.strength||'-'}</span></div>
+                <div class="cr-row"><span class="cr-lbl cr-orange">💡 개선점</span><span>${q.weakness||'-'}</span></div>
+                <div class="cr-row"><span class="cr-lbl cr-blue">🎯 전략</span><span>${q.tip||'-'}</span></div>
             </div></div>`;
     }).join('');
 
@@ -2031,51 +2017,51 @@ function _renderCoachingReport(data) {
 
     crBody.innerHTML = `
     <div class="cr-overall-card">
-        <div class="cr-ov-icon">?쭬</div>
+        <div class="cr-ov-icon">🧠</div>
         <div class="cr-ov-text">${data.overall||'-'}</div>
     </div>
     <div class="cr-q-section">
-        <div class="cr-section-hdr">?뱦 臾몄젣蹂?遺꾩꽍</div>
+        <div class="cr-section-hdr">📌 문제별 분석</div>
         <div class="cr-q-grid">${qCards}</div>
     </div>
     <div class="cr-coaching-grid">
         <div class="cr-coaching-card cr-speed-card">
-            <div class="cr-section-hdr">?? ?쎄린 ?띾룄 ?μ긽</div>
+            <div class="cr-section-hdr">🚀 읽기 속도 향상</div>
             <ol class="cr-ol">${spList}</ol>
         </div>
         <div class="cr-coaching-card cr-acc-card">
-            <div class="cr-section-hdr">?렞 ?쎄린 ?뺥솗???μ긽</div>
+            <div class="cr-section-hdr">🎯 읽기 정확도 향상</div>
             <ol class="cr-ol">${acList}</ol>
         </div>
     </div>`;
 }
 
 async function _requestGeminiAnalysis(apiKey, payload) {
-    const prompt = `?섎뒫 ?낇빐 ?몄?怨쇳븰 ?꾨Ц媛濡쒖꽌 ?숈깮???쒖꽑 ?곗씠?곕? 遺꾩꽍?섏꽭?? JSON留?諛섑솚?섏꽭??
+    const prompt = `수능 독해 인지과학 전문가로서 학생의 시선 데이터를 분석하세요. JSON만 반환하세요.
 
-AOI蹂?泥대쪟?쒓컙(ms):${JSON.stringify(payload.dwell)}
-?쎌꽭?댁뀡 ??${JSON.stringify(payload.fixCounts)}
-由ш렇?덉뀡 ??${JSON.stringify(payload.regCounts)}
-Q?봒 ?꾪솚(泥?0媛?:${JSON.stringify(payload.transitions.slice(0,10))}
-?ъ슜???듭?:${JSON.stringify(payload.userAnswers)}
+AOI별 체류시간(ms):${JSON.stringify(payload.dwell)}
+픽세이션 수:${JSON.stringify(payload.fixCounts)}
+리그레션 수:${JSON.stringify(payload.regCounts)}
+Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
+사용자 답지:${JSON.stringify(payload.userAnswers)}
 
-諛섏쓳?좏삎 湲곗?:
-- ?뺤긽?몄퐫??泥대쪟 蹂댄넻,?쎌꽭?댁뀡 蹂댄넻,由ш렇?덉뀡 ?곸쓬
-- ?⑥쑉?ㅼ틦??泥대쪟 吏㏃쓬,?쎌꽭?댁뀡 ?곸쓬,由ш렇?덉뀡 嫄곗쓽 ?놁쓬
-- ?몄??곷찄異?泥대쪟 湲몄쓬,?쎌꽭?댁뀡 留롮쓬,由ш렇?덉뀡 蹂댄넻
-- 怨쇱엵鍮꾪슚??泥대쪟 留ㅼ슦 湲몄쓬,由ш렇?덉뀡 留롮쓬,?щ갑臾?諛섎났
+반응유형 기준:
+- 정상인코딩:체류 보통,픽세이션 보통,리그레션 적음
+- 효율스캐닝:체류 짧음,픽세이션 적음,리그레션 거의 없음
+- 인지적멈춤:체류 길음,픽세이션 많음,리그레션 보통
+- 과잉비효율:체류 매우 길음,리그레션 많음,재방문 반복
 
-{"responseType":{"para-0":"?뺤긽?몄퐫??,"para-1":"?⑥쑉?ㅼ틦??,"para-2":"?몄??곷찄異?,"para-3":"?뺤긽?몄퐫??,"q-1":"?뺤긽?몄퐫??,"q-2":"怨쇱엵鍮꾪슚??,"q-3":"?뺤긽?몄퐫??},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
+{"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    const MODEL = 'gemini-3.6-flash';   // ?⑥씪 紐⑤뜽 怨좎젙
+    const MODEL = 'gemini-3.6-flash';   // 단일 모델 고정
 
     const statusEl = document.getElementById('gazeGraphStatus');
     const setMsg = m => { if (statusEl) statusEl.textContent = m; };
 
-    // ??SDK generateContent (AQ ??吏??
+    // ① SDK generateContent (AQ 키 지원)
     const SDK = window._GoogleGenAI;
     if (SDK) {
-        setMsg('AI 遺꾩꽍 以?..');
+        setMsg('AI 분석 중...');
         try {
             const client   = new SDK({ apiKey });
             const response = await Promise.race([
@@ -2091,7 +2077,7 @@ Q?봒 ?꾪솚(泥?0媛?:${JSON.stringify(payload.transitions.slice(0,10))}
         }
     }
 
-    // ??raw fetch \ud3f4\ubc31
+    // ② raw fetch \ud3f4\ubc31
     {
         setMsg('AI \ubd84\uc11d \uc911...');
         try {
@@ -2127,8 +2113,8 @@ Q?봒 ?꾪솚(泥?0媛?:${JSON.stringify(payload.transitions.slice(0,10))}
             .finally(() => clearTimeout(tid));
     };
 
-    // ??紐⑤뜽 紐⑸줉 ?먮룞 ?먯? (APIKey 諛⑹떇)
-    setMsg('?ъ슜 媛?ν븳 紐⑤뜽 ?먯? 以?..');
+    // ① 모델 목록 자동 탐지 (APIKey 방식)
+    setMsg('사용 가능한 모델 탐지 중...');
     let candidates = [];
     try {
         const lr = await fetchT(
@@ -2140,31 +2126,31 @@ Q?봒 ?꾪솚(泥?0媛?:${JSON.stringify(payload.transitions.slice(0,10))}
             candidates = (lj.models || [])
                 .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
                 .map(m => m.name.replace('models/', ''))
-                .slice(0, 5);   // ?곸쐞 5媛쒕쭔
-            logI('graph', '?먯???紐⑤뜽: ' + candidates.join(', '));
+                .slice(0, 5);   // 상위 5개만
+            logI('graph', '탐지된 모델: ' + candidates.join(', '));
         }
-    } catch (e) { logW('graph', '紐⑤뜽 ?먯? ?ㅽ뙣: ' + e.message); }
+    } catch (e) { logW('graph', '모델 탐지 실패: ' + e.message); }
 
     if (!candidates.length) candidates = ['gemini-1.5-flash','gemini-1.5-pro','gemini-1.0-pro'];
     else {
-        // 1.5/1.0 援ы삎 紐⑤뜽 ?곗꽑 ?뺣젹
+        // 1.5/1.0 구형 모델 우선 정렬
         candidates.sort((a, b) => {
             const score = m => m.includes('1.5') ? 0 : m.includes('1.0') ? 1 : m.includes('pro') ? 2 : 3;
             return score(a) - score(b);
         });
     }
 
-    // ??generateContent ?쒕룄 ??x-goog-api-key + ?뺥솗???꾨줈?앺듃 ID
+    // ② generateContent 시도 — x-goog-api-key + 정확한 프로젝트 ID
     const errs = [];
     const apiVersions = ['v1beta', 'v1'];
     const extraModels = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro'];
     const allModels = [...new Set([...candidates, ...extraModels])];
-    // ?뺤씤???뺥솗???꾨줈?앺듃 ID (Google Cloud Console?먯꽌 ?뺤씤)
+    // 확인된 정확한 프로젝트 ID (Google Cloud Console에서 확인)
     const PROJECT_ID = 'gen-lang-client-0083588806';
 
     for (const model of allModels) {
         for (const ver of apiVersions) {
-            setMsg(`AI 遺꾩꽍 以?.. (${model})`);
+            setMsg(`AI 분석 중... (${model})`);
             const url = `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent`;
             const hdrs = {
                 'Content-Type': 'application/json',
@@ -2176,7 +2162,7 @@ Q?봒 ?꾪솚(泥?0媛?:${JSON.stringify(payload.transitions.slice(0,10))}
                 if (res.ok) {
                     const json = await res.json();
                     const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                    logI('graph', `AI ?깃났: ${ver}/${model}`);
+                    logI('graph', `AI 성공: ${ver}/${model}`);
                     setMsg('');
                     return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
                 }
@@ -2190,10 +2176,10 @@ Q?봒 ?꾪솚(泥?0媛?:${JSON.stringify(payload.transitions.slice(0,10))}
         }
     }
 
-    // ??Gemini ?ㅽ뙣 ???쒖꽑 ?곗씠??湲곕컲 濡쒖뺄 AI 遺꾩꽍
-    logW('graph', 'Gemini ?ㅽ뙣: ' + errs.slice(-4).join(' | '));
-    logI('graph', '濡쒖뺄 AI 遺꾩꽍 ?붿쭊 ?ㅽ뻾');
-    setMsg('AI 遺꾩꽍 以?..');
+    // ③ Gemini 실패 시 시선 데이터 기반 로컬 AI 분석
+    logW('graph', 'Gemini 실패: ' + errs.slice(-4).join(' | '));
+    logI('graph', '로컬 AI 분석 엔진 실행');
+    setMsg('AI 분석 중...');
     return _localAIAnalysis(payload);
 }
 
@@ -2223,10 +2209,10 @@ function _localAIAnalysis(payload) {
         const rf = avgF > 0 ? f / avgF : 1;
         const rr = avgR > 0 ? r / avgR : 1;
 
-        if      (rd < 0.7 && rf < 0.7 && rr < 0.5) responseType[k] = '?⑥쑉?ㅼ틦??;
-        else if (rd > 1.5 && rr > 1.5)              responseType[k] = '怨쇱엵鍮꾪슚??;
-        else if (rd > 1.2 && rf > 1.2)              responseType[k] = '?몄??곷찄異?;
-        else                                          responseType[k] = '?뺤긽?몄퐫??;
+        if      (rd < 0.7 && rf < 0.7 && rr < 0.5) responseType[k] = '효율스캐닝';
+        else if (rd > 1.5 && rr > 1.5)              responseType[k] = '과잉비효율';
+        else if (rd > 1.2 && rf > 1.2)              responseType[k] = '인지적멈춤';
+        else                                          responseType[k] = '정상인코딩';
 
         fluencyBottleneck[k] = (rd > 1.8 && rr > 1.0) || rf > 2.5;
     }
@@ -2234,26 +2220,26 @@ function _localAIAnalysis(payload) {
     return { responseType, fluencyBottleneck };
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// 짠14-F-3. Canvas drawGazeGraph ??12???뚮뜑留?
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ═══════════════════════════════════════════════════════════════════════════════
+// §14-F-3. Canvas drawGazeGraph — 12행 렌더링
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, ai) {
-    const LW  = 148;   // ?덉씠釉???
+    const LW  = 148;   // 레이블 폭
     const PAD = 8;
     const ROWS = [
-        { key: 'timeline',    label: '?몃??곸뿭',            h: 34 },
-        { key: 'answer',      label: '?듭??좏깮 (O/X)',      h: 28 },
-        { key: 'infodensity', label: '?뺣낫諛??洹쇨굅臾몃떒',   h: 28 },
-        { key: 'gazeX',       label: '?쒖꽑 X異?,            h: 60 },
-        { key: 'gazeY',       label: '?쒖꽑 Y異?,            h: 60 },
-        { key: 'fixation',    label: '?쎌꽭?댁뀡',            h: 44 },
-        { key: 'regression',  label: '由ш렇?덉뀡',            h: 30 },
-        { key: 'qptrans',     label: '臾몄젣?붿?臾??대룞',      h: 28 },
-        { key: 'response',    label: '諛섏쓳?좏삎 (AI)',        h: 28 },
-        { key: 'bottleneck',  label: '?쎄린?좎갹??蹂묐ぉ (AI)', h: 28 },
-        { key: 'efficiency',  label: '?뺣났?⑥쑉??,           h: 28 },
-        { key: 'dwell',       label: '泥대쪟?쒓컙',             h: 52 },
+        { key: 'timeline',    label: '세부영역',            h: 34 },
+        { key: 'answer',      label: '답지선택 (O/X)',      h: 28 },
+        { key: 'infodensity', label: '정보밀도/근거문단',   h: 28 },
+        { key: 'gazeX',       label: '시선 X축',            h: 60 },
+        { key: 'gazeY',       label: '시선 Y축',            h: 60 },
+        { key: 'fixation',    label: '픽세이션',            h: 44 },
+        { key: 'regression',  label: '리그레션',            h: 30 },
+        { key: 'qptrans',     label: '문제↔지문 이동',      h: 28 },
+        { key: 'response',    label: '반응유형 (AI)',        h: 28 },
+        { key: 'bottleneck',  label: '읽기유창성 병목 (AI)', h: 28 },
+        { key: 'efficiency',  label: '왕복효율성',           h: 28 },
+        { key: 'dwell',       label: '체류시간',             h: 52 },
     ];
 
     const CW = Math.max(window.innerWidth * 0.94, 900);
@@ -2269,10 +2255,10 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
     ctx.fillStyle = '#0c0e1f';
     ctx.fillRect(0, 0, CW, CH);
 
-    // X 醫뚰몴 蹂??
+    // X 좌표 변환
     const xT = t => LW + PAD + (t / (totalMs || 1)) * GW;
 
-    // 諛곌꼍 ?몃줈 洹몃━??
+    // 배경 세로 그리드
     ctx.strokeStyle = 'rgba(255,255,255,.05)';
     ctx.lineWidth = 1;
     [.25, .5, .75, 1].forEach(p => {
@@ -2280,7 +2266,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke();
     });
 
-    // ?쒓컙 ?덇툑
+    // 시간 눈금
     ctx.fillStyle = 'rgba(255,255,255,.22)';
     ctx.font = '10px Inter,sans-serif';
     ctx.textAlign = 'left';
@@ -2294,8 +2280,8 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
         'para-0':'#3b82f6','para-1':'#60a5fa','para-2':'#1d4ed8','para-3':'#93c5fd',
         'q-1':'#f59e0b','q-2':'#d97706','q-3':'#fbbf24'
     };
-    const RESP_CLR = { '?뺤긽?몄퐫??:'#3b82f6','?⑥쑉?ㅼ틦??:'#10b981','?몄??곷찄異?:'#f59e0b','怨쇱엵鍮꾪슚??:'#ef4444' };
-    const DENS_CLR = { '怨?:'#4338ca','以?:'#7c3aed','?':'#a78bfa' };
+    const RESP_CLR = { '정상인코딩':'#3b82f6','효율스캐닝':'#10b981','인지적멈춤':'#f59e0b','과잉비효율':'#ef4444' };
+    const DENS_CLR = { '고':'#4338ca','중':'#7c3aed','저':'#a78bfa' };
 
     const drawLbl = (label, y, h) => {
         ctx.fillStyle = 'rgba(255,255,255,.32)';
@@ -2314,9 +2300,9 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
         const ry = curY + PAD;
         drawLbl(row.label, ry, row.h);
 
-        // ?? 1. ?몃??곸뿭 ??꾨씪????
+        // ── 1. 세부영역 타임라인 ──
         if (row.key === 'timeline') {
-            // data-qnum 湲곕컲 ?쇰꺼 (q-1?뭂0, q-2?뭂1, q-3?뭂2)
+            // data-qnum 기반 라벨 (q-1→Q0, q-2→Q1, q-3→Q2)
             const qLbl = k => {
                 if (!k || !k.startsWith('q-')) return (k||'').replace('para-','P');
                 const el = document.querySelector(`[data-aoi="${k}"]`);
@@ -2341,18 +2327,18 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             });
         }
 
-        // ?? 2. ?듭??좏깮 O/X ??
+        // ── 2. 답지선택 O/X ──
         else if (row.key === 'answer') {
             document.querySelectorAll('.question-block').forEach((blk, qi) => {
                 const aoiKey  = blk.dataset.aoi;
                 const correct = parseInt(blk.dataset.answer || '0', 10);
 
-                // ??DOM?먯꽌 吏곸젒 ?쎄린 (?붾㈃???좏깮??= 臾댁“嫄??쒖떆)
+                // ① DOM에서 직접 읽기 (화면에 선택됨 = 무조건 표시)
                 const allLis    = Array.from(blk.querySelectorAll('.choice-list li'));
                 const selLi     = blk.querySelector('.choice-list li.selected');
                 const domChoice = selLi ? allLis.indexOf(selLi) + 1 : 0;
 
-                // ????꾩뒪?ы봽: _userAnswers ?곗꽑, ?놁쑝硫?gaze log?먯꽌 留덉?留?蹂??쒓컖 異붿젙
+                // ② 타임스탬프: _userAnswers 우선, 없으면 gaze log에서 마지막 본 시각 추정
                 const stored = _userAnswers[qi];
                 let markT = stored ? stored.t : null;
                 if (markT === null && domChoice) {
@@ -2374,7 +2360,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                     ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
                     ctx.setLineDash([]);
                 } else if ((dwell[aoiKey] || 0) > 200) {
-                    // 遊ㅼ?留??좏깮 ????
+                    // 봤지만 선택 안 함
                     ctx.fillStyle = 'rgba(148,163,184,.55)';
                     ctx.font = 'bold 12px Inter,sans-serif';
                     ctx.textAlign = 'left';
@@ -2383,7 +2369,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             });
         }
 
-        // ?? 3. ?뺣낫諛??洹쇨굅臾몃떒 (?섎뱶肄붾뵫) ??
+        // ── 3. 정보밀도/근거문단 (하드코딩) ──
         else if (row.key === 'infodensity') {
             const AOIS = ['para-0','para-1','para-2','para-3'];
             const td   = AOIS.reduce((s, k) => s + (dwell[k] || 0), 0) || 1;
@@ -2398,7 +2384,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                 }
                 bx += w;
             });
-            // 洹쇨굅臾몃떒 蹂꾪몴 (Q0,Q1,Q2 ?쒖떆)
+            // 근거문단 별표 (Q0,Q1,Q2 표시)
             [1,2,3].forEach(qi => {
                 const srcs = PASSAGE_ANALYSIS.sourceParagraph[`q-${qi}`] || [];
                 const el   = document.querySelector(`[data-aoi="q-${qi}"]`);
@@ -2408,14 +2394,14 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                     const w = (dwell[aoi] || 0) / td * GW;
                     if (srcs.includes(aoi)) {
                         ctx.fillStyle = '#fbbf24'; ctx.font = '10px Inter,sans-serif';
-                        ctx.fillText(`?꿗${qn}`, bx2 + w / 2 - 12, ry + 11);
+                        ctx.fillText(`★Q${qn}`, bx2 + w / 2 - 12, ry + 11);
                     }
                     bx2 += w;
                 });
             });
         }
 
-        // ?? 4/5. ?쒖꽑 X/Y異?爰얠?????
+        // ── 4/5. 시선 X/Y축 꺾은선 ──
         else if (row.key === 'gazeX' || row.key === 'gazeY') {
             const maxV = row.key === 'gazeX' ? (window.screen.width || 1920) : (window.screen.height || 1080);
             ctx.strokeStyle = row.key === 'gazeX' ? '#60a5fa' : '#a78bfa';
@@ -2432,7 +2418,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             ctx.stroke();
         }
 
-        // ?? 6. ?쎌꽭?댁뀡 ????
+        // ── 6. 픽세이션 원 ──
         else if (row.key === 'fixation') {
             fixations.forEach(f => {
                 const x = xT(f.t);
@@ -2443,7 +2429,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             });
         }
 
-        // ?? 7. 由ш렇?덉뀡 ?붿궡????
+        // ── 7. 리그레션 화살표 ──
         else if (row.key === 'regression') {
             regressions.forEach(r => {
                 const x = xT(r.t);
@@ -2456,7 +2442,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             });
         }
 
-        // ?? 8. Q?봒 ?대룞 留덉빱 ??
+        // ── 8. Q↔P 이동 마커 ──
         else if (row.key === 'qptrans') {
             transitions.forEach(tr => {
                 const x = xT(tr.t);
@@ -2464,13 +2450,13 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
                 ctx.setLineDash([]);
-                ctx.fillStyle = tr.dir === 'Q?뭁' ? '#34d399' : '#f59e0b';
+                ctx.fillStyle = tr.dir === 'Q→P' ? '#34d399' : '#f59e0b';
                 ctx.font = '9px Inter,sans-serif';
-                ctx.fillText(tr.dir === 'Q?뭁' ? '?? : '??, x - 4, ry + (tr.dir === 'Q?뭁' ? row.h - 2 : 10));
+                ctx.fillText(tr.dir === 'Q→P' ? '▼' : '▲', x - 4, ry + (tr.dir === 'Q→P' ? row.h - 2 : 10));
             });
         }
 
-        // ?? 9. 諛섏쓳?좏삎 (AI) ??
+        // ── 9. 반응유형 (AI) ──
         else if (row.key === 'response') {
             const AOIS = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
             const td   = AOIS.reduce((s, k) => s + (dwell[k] || 0), 0) || 1;
@@ -2485,7 +2471,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             });
         }
 
-        // ?? 10. ?쎄린?좎갹??蹂묐ぉ (AI) ??
+        // ── 10. 읽기유창성 병목 (AI) ──
         else if (row.key === 'bottleneck') {
             const AOIS = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
             const td   = AOIS.reduce((s, k) => s + (dwell[k] || 0), 0) || 1;
@@ -2495,17 +2481,17 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                 const bn = (ai.fluencyBottleneck || {})[aoi];
                 ctx.fillStyle = bn ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.05)';
                 ctx.fillRect(bx, ry + 2, w - 1, row.h - 4);
-                if (bn && w > 18) { ctx.fillStyle = '#fca5a5'; ctx.font = '8px Inter,sans-serif'; ctx.fillText('蹂묐ぉ', bx + 2, ry + row.h / 2 + 4); }
+                if (bn && w > 18) { ctx.fillStyle = '#fca5a5'; ctx.font = '8px Inter,sans-serif'; ctx.fillText('병목', bx + 2, ry + row.h / 2 + 4); }
                 bx += w;
             });
         }
 
-        // ?? 11. ?뺣났?⑥쑉????
+        // ── 11. 왕복효율성 ──
         else if (row.key === 'efficiency') {
-            const EFF = { '?믪쓬':'rgba(52,211,153,.45)','蹂댄넻':'rgba(251,191,36,.45)','??쓬':'rgba(239,68,68,.45)' };
+            const EFF = { '높음':'rgba(52,211,153,.45)','보통':'rgba(251,191,36,.45)','낮음':'rgba(239,68,68,.45)' };
             const qW  = GW / numQ;
             for (let qi = 1; qi <= numQ; qi++) {
-                const k = `q-${qi}`, lvl = efficiency[k] || '蹂댄넻';
+                const k = `q-${qi}`, lvl = efficiency[k] || '보통';
                 const bx = LW + PAD + (qi - 1) * qW;
                 ctx.fillStyle = EFF[lvl];
                 ctx.fillRect(bx, ry + 2, qW - 2, row.h - 4);
@@ -2514,7 +2500,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
             }
         }
 
-        // ?? 12. 泥대쪟?쒓컙 留됰? ??
+        // ── 12. 체류시간 막대 ──
         else if (row.key === 'dwell') {
             const AOIS = ['para-0','para-1','para-2','para-3','q-1','q-2','q-3'];
             const maxD = Math.max(1, ...AOIS.map(k => dwell[k] || 0));
@@ -2525,7 +2511,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                 ctx.fillStyle = AOI_CLR[aoi] || '#475569';
                 ctx.fillRect(bx, ry + row.h - bh - 8, bw, bh);
                 ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '8px Inter,sans-serif';
-                // 泥대쪟?쒓컙 x異뺣룄 data-qnum 湲곕컲 Q0/Q1/Q2 ?쒖떆
+                // 체류시간 x축도 data-qnum 기반 Q0/Q1/Q2 표시
                 const el2 = aoi.startsWith('q-') ? document.querySelector(`[data-aoi="${aoi}"]`) : null;
                 const lbl2 = aoi.startsWith('q-')
                     ? 'Q' + (el2 ? el2.dataset.qnum : parseInt(aoi.replace('q-',''),10)-1)
