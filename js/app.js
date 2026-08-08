@@ -1970,36 +1970,32 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         });
     }
 
-    // ② generateContent 시도 — AQ 신형 키: x-goog-api-key 헤더 필수
+    // ② generateContent 시도 — x-goog-api-key 헤더 전용 (x-goog-user-project 없이)
     const errs = [];
-    const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
-    // 프로젝트 후보 (x-goog-user-project 헤더용, AI Studio 스크린샷 기반)
-    const projCandidates = ['ReadSmart02260808','readsmart02260808','gen_lang_client-0083588806',''];
-
-    // 추가 모델 후보 (탐지 목록에 없을 수 있는 최신 모델)
-    const extraModels = ['gemini-3.5-flash','gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash'];
+    // v1beta와 v1 두 버전 모두 시도 (1.5모델은 v1, 2.x모델은 v1beta)
+    const apiVersions = ['v1beta', 'v1'];
+    const extraModels = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro'];
     const allModels = [...new Set([...candidates, ...extraModels])];
 
     for (const model of allModels) {
-        for (const proj of projCandidates) {
+        for (const ver of apiVersions) {
             setMsg(`AI 분석 중... (${model})`);
+            const url = `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent`;
             const hdrs = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
-            if (proj) hdrs['x-goog-user-project'] = proj;
-            const url = `${baseUrl}/${model}:generateContent`;
             try {
                 const res = await fetchT(url, { method: 'POST', headers: hdrs, body: reqBody });
                 if (res.ok) {
                     const json = await res.json();
                     const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                    logI('graph', `AI 성공: ${model} (proj=${proj||'none'})`);
+                    logI('graph', `AI 성공: ${ver}/${model}`);
                     setMsg('');
                     return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
                 }
                 const txt = await res.text().catch(() => '');
-                errs.push(`${model}[${proj||'np'}] HTTP${res.status}`);
-                logW('graph', errs.at(-1) + ' ' + txt.slice(0, 60));
+                errs.push(`${ver}/${model} HTTP${res.status}`);
+                logW('graph', errs.at(-1) + ' ' + txt.slice(0, 80));
             } catch (e) {
-                errs.push(`${model}: ${e.message}`);
+                errs.push(`${ver}/${model}: ${e.message}`);
                 logW('graph', errs.at(-1));
             }
         }
