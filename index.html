@@ -83,9 +83,19 @@
         <button id="btnToggleTimer" class="toggle-btn is-off" title="타이머 표시/숨기기">⏱ 타이머</button>
         <button id="btnReplay"      class="toggle-btn replay-btn" title="시선 리플레이" disabled>▶ 리플레이</button>
         <button id="btnGazeGraph"   class="toggle-btn graph-btn" title="시선그래프 분석" disabled>📈 시선그래프</button>
+        <button id="btnCoachingReport" class="toggle-btn coaching-btn" title="AI 코칭 리포트" disabled onclick="showCoachingReport()">📋 코칭 리포트</button>
         <button id="btnViewStats"   class="toggle-btn stats-btn" onclick="showGazeStats()" title="누적 시선 통계 보기">📊 통계</button>
         <button id="btnToggleDebug" class="toggle-btn is-on"  title="AOI 디버그 HUD 표시/숨기기">🐛 DBG</button>
       </div>
+    </div>
+
+    <!-- ── Coaching Report Panel ── -->
+    <div id="coachingReport" class="cr-panel hidden">
+      <div class="cr-header">
+        <div class="cr-title">📋 AI 코칭 리포트 <span class="cr-model-badge">gemini-2.5-flash</span></div>
+        <button class="cr-close-btn" onclick="document.getElementById('coachingReport').classList.add('hidden')">✕ 닫기</button>
+      </div>
+      <div id="crBody"></div>
     </div>
 
     <!-- ── Panels ── -->

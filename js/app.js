@@ -502,6 +502,7 @@ let _replayRAF    = null;
 
 // ── 사용자 답지 선택 기록 ──
 let _userAnswers = {};  // { qIdx: { choice:1~5, t:ms } }
+let _coachingCache  = null;  // AI 코칭 리포트 캐시
 
 // ── 지문 사전 분석 (하드코딩 — 지문 교체 시에만 편집) ──
 const PASSAGE_ANALYSIS = {
@@ -868,6 +869,11 @@ function showReadingLayout() {
 
     // 선지 선택 UI 초기화 (이전 세션 선택 표시 제거)
     document.querySelectorAll('.choice-list li.selected').forEach(el => el.classList.remove('selected'));
+    _coachingCache = null;
+    const _crPanel = document.getElementById('coachingReport');
+    if (_crPanel) _crPanel.classList.add('hidden');
+    const _btnCr = document.getElementById('btnCoachingReport');
+    if (_btnCr) { _btnCr.disabled = true; _btnCr.classList.remove('coaching-ready'); }
 
     // HUD 숨기기 (독해 모드 중)
     document.body.classList.add('reading-mode');
@@ -1917,6 +1923,154 @@ async function _doDrawGazeGraph(log, totalMs, numQ, dwell, fixations, regression
 
     const canvas = document.getElementById('gazeGraphCanvas');
     if (canvas) drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions, transitions, efficiency, fixCounts, regCounts, ai);
+    // 코칭 리포트 백그라운드 생성
+    _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency, ai, apiKey);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §AI 코칭 리포트
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency, ai, apiKey) {
+    try {
+        logI('coaching', '코칭 리포트 생성 중...');
+        const prompt = _buildCoachingPrompt(log, totalMs, dwell, fixCounts, regCounts, efficiency, ai);
+        _coachingCache = await _requestCoachingReport(apiKey, prompt);
+        const btn = document.getElementById('btnCoachingReport');
+        if (btn) { btn.disabled = false; btn.classList.add('coaching-ready'); }
+        logI('coaching', '코칭 리포트 완료');
+    } catch (e) {
+        logW('coaching', '코칭 실패: ' + e.message);
+        _coachingCache = {
+            overall: 'AI 코칭 분석에 실패했습니다. API 키를 확인해 주세요.',
+            questions: [], speedCoaching: [], accuracyCoaching: []
+        };
+        const btn = document.getElementById('btnCoachingReport');
+        if (btn) btn.disabled = false;
+    }
+}
+
+function _buildCoachingPrompt(log, totalMs, dwell, fixCounts, regCounts, efficiency, ai) {
+    const totalSec  = (totalMs / 1000).toFixed(1);
+    const totalReg  = Object.values(regCounts).reduce((s, v) => s + v, 0);
+    const totalFix  = Object.values(fixCounts).reduce((s, v) => s + v, 0);
+
+    const paraLines = ['para-0','para-1','para-2','para-3'].map((k, i) => {
+        const sec = ((dwell[k]||0)/1000).toFixed(1);
+        const rt  = (ai.responseType||{})[k] || '미분류';
+        const bn  = (ai.fluencyBottleneck||{})[k] ? '병목' : '정상';
+        return `  문단${i}: 체류${sec}초, 픽세이션${fixCounts[k]||0}회, 리그레션${regCounts[k]||0}회, 유형=${rt}, 유창성=${bn}`;
+    }).join('\n');
+
+    const blocks   = Array.from(document.querySelectorAll('.question-block'));
+    const qLines   = blocks.map((blk, qi) => {
+        const aoiKey   = blk.dataset.aoi;
+        const correct  = parseInt(blk.dataset.answer || '0', 10);
+        const allLis   = Array.from(blk.querySelectorAll('.choice-list li'));
+        const selLi    = blk.querySelector('.choice-list li.selected');
+        const userCh   = selLi ? allLis.indexOf(selLi) + 1 : null;
+        const verdict  = userCh === null ? '미선택' : userCh === correct ? '정답' : '오답';
+        const sec      = ((dwell[aoiKey]||0)/1000).toFixed(1);
+        const rt       = (ai.responseType||{})[aoiKey] || '미분류';
+        return `  Q${qi}: ${verdict}(선택${userCh||'-'}/정답${correct}), 체류${sec}초, 유형=${rt}, 픽세이션${fixCounts[aoiKey]||0}회, 리그레션${regCounts[aoiKey]||0}회`;
+    }).join('\n');
+
+    return `수능 국어 독해 코칭 전문가입니다. 아래 학생 시선 데이터를 분석하여 맞춤형 코칭 리포트를 JSON으로만 작성하세요. 다른 텍스트는 절대 포함하지 마세요.
+
+[학생 시선 데이터]
+총 독해 시간: ${totalSec}초
+전체 픽세이션: ${totalFix}회
+전체 리그레션(역행): ${totalReg}회
+왕복효율성: ${(efficiency*100).toFixed(0)}%
+
+[문단별 분석]
+${paraLines}
+
+[문제별 분석]
+${qLines}
+
+[출력 형식 - 이 JSON만 반환]
+{"overall":"2~3문장 종합진단","questions":[{"qnum":0,"isCorrect":true,"strength":"잘한점 1~2문장","weakness":"아쉬운점 1~2문장","tip":"전략 1~2문장"},{"qnum":1,"isCorrect":false,"strength":"...","weakness":"...","tip":"..."},{"qnum":2,"isCorrect":true,"strength":"...","weakness":"...","tip":"..."}],"speedCoaching":["구체적방법1","방법2","방법3"],"accuracyCoaching":["방법1","방법2","방법3"]}`;
+}
+
+async function _requestCoachingReport(apiKey, prompt) {
+    const MODEL = 'gemini-2.5-flash';
+    const SDK   = window._GoogleGenAI;
+    if (SDK) {
+        const client   = new SDK({ apiKey });
+        const response = await Promise.race([
+            client.models.generateContent({ model: MODEL, contents: prompt }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))
+        ]);
+        const raw = response.text ?? '';
+        return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+    }
+    // raw fetch fallback
+    const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+        { method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
+    );
+    if (res.ok) {
+        const json = await res.json();
+        const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+        return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+    }
+    throw new Error('HTTP' + res.status);
+}
+
+function showCoachingReport() {
+    const panel  = document.getElementById('coachingReport');
+    const crBody = document.getElementById('crBody');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    if (_coachingCache && _coachingCache.overall) {
+        _renderCoachingReport(_coachingCache);
+    } else {
+        if (crBody) crBody.innerHTML = '<div class="cr-loading">🔄 AI 코칭 리포트 생성 중... 잠시 후 다시 클릭하세요.</div>';
+    }
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _renderCoachingReport(data) {
+    const crBody = document.getElementById('crBody');
+    if (!crBody) return;
+
+    const qCards = (data.questions || []).map(q => {
+        const cls   = q.isCorrect === true ? 'cr-correct' : q.isCorrect === false ? 'cr-wrong' : 'cr-unknown';
+        const badge = q.isCorrect === true ? '✅ 정답' : q.isCorrect === false ? '❌ 오답' : '⬜ 미선택';
+        return `<div class="cr-q-card ${cls}">
+            <div class="cr-q-header"><span class="cr-q-num">Q${q.qnum}</span><span class="cr-q-result">${badge}</span></div>
+            <div class="cr-q-body">
+                <div class="cr-row"><span class="cr-lbl cr-green">👍 잘한 점</span><span>${q.strength||'-'}</span></div>
+                <div class="cr-row"><span class="cr-lbl cr-orange">💡 개선점</span><span>${q.weakness||'-'}</span></div>
+                <div class="cr-row"><span class="cr-lbl cr-blue">🎯 전략</span><span>${q.tip||'-'}</span></div>
+            </div></div>`;
+    }).join('');
+
+    const spList = (data.speedCoaching||[]).map((c,i)=>`<li><span class="cr-num">${i+1}</span>${c}</li>`).join('');
+    const acList = (data.accuracyCoaching||[]).map((c,i)=>`<li><span class="cr-num">${i+1}</span>${c}</li>`).join('');
+
+    crBody.innerHTML = `
+    <div class="cr-overall-card">
+        <div class="cr-ov-icon">🧠</div>
+        <div class="cr-ov-text">${data.overall||'-'}</div>
+    </div>
+    <div class="cr-q-section">
+        <div class="cr-section-hdr">📌 문제별 분석</div>
+        <div class="cr-q-grid">${qCards}</div>
+    </div>
+    <div class="cr-coaching-grid">
+        <div class="cr-coaching-card cr-speed-card">
+            <div class="cr-section-hdr">🚀 읽기 속도 향상</div>
+            <ol class="cr-ol">${spList}</ol>
+        </div>
+        <div class="cr-coaching-card cr-acc-card">
+            <div class="cr-section-hdr">🎯 읽기 정확도 향상</div>
+            <ol class="cr-ol">${acList}</ol>
+        </div>
+    </div>`;
 }
 
 async function _requestGeminiAnalysis(apiKey, payload) {
