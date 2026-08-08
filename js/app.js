@@ -1936,74 +1936,53 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
 {"responseType":{"para-0":"정상인코딩","para-1":"효율스캐닝","para-2":"인지적멈춤","para-3":"정상인코딩","q-1":"정상인코딩","q-2":"과잉비효율","q-3":"정상인코딩"},"fluencyBottleneck":{"para-0":false,"para-1":false,"para-2":true,"para-3":false,"q-1":false,"q-2":true,"q-3":false}}`;
 
-    const reqBody = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
-    const statusEl = document.getElementById('gazeGraphStatus');
-    const setMsg = m => { if (statusEl) statusEl.textContent = m; };
+    const MODEL = 'gemini-2.5-flash';   // 단일 모델 고정
 
-    // ① 공식 @google/genai SDK — Interactions API (2026 신형, AQ 키 완전 지원)
+    // ① SDK generateContent (AQ \ud0a4 \uc9c0\uc6d0)
     const SDK = window._GoogleGenAI;
     if (SDK) {
-        setMsg('AI 분석 중...');
-        // 신형 모델 우선 시도
-        for (const model of ['gemini-3.6-flash','gemini-2.5-flash-lite','gemini-2.5-flash']) {
-            try {
-                const client = new SDK({ apiKey });
-                // Interactions API (신형)
-                const interaction = await Promise.race([
-                    client.interactions.create({ model, input: prompt }),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000))
-                ]);
-                const raw = interaction.output_text ?? '';
-                logI('graph', 'Gemini Interactions API 성공: ' + model);
-                setMsg('');
-                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
-            } catch (e) {
-                logW('graph', `Interactions/${model}: ${e.message?.slice(0, 80)}`);
-            }
-            // generateContent 방식도 시도 (신형 SDK)
-            try {
-                const client = new SDK({ apiKey });
-                const response = await Promise.race([
-                    client.models.generateContent({ model, contents: prompt }),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000))
-                ]);
-                const raw = response.text ?? '';
-                logI('graph', 'Gemini generateContent SDK 성공: ' + model);
-                setMsg('');
-                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
-            } catch (e) {
-                logW('graph', `genContent/${model}: ${e.message?.slice(0, 80)}`);
-            }
+        setMsg('AI \ubd84\uc11d \uc911...');
+        try {
+            const client   = new SDK({ apiKey });
+            const response = await Promise.race([
+                client.models.generateContent({ model: MODEL, contents: prompt }),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000))
+            ]);
+            const raw = response.text ?? '';
+            logI('graph', 'Gemini SDK \uc131\uacf5: ' + MODEL);
+            setMsg('');
+            return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+        } catch (e) {
+            logW('graph', `SDK/${MODEL}: ${e.message?.slice(0, 100)}`);
         }
     }
 
-    // ② raw fetch — Interactions API (v1beta2)
+    // ② raw fetch \ud3f4\ubc31
     {
-        setMsg('AI 분석 중...');
-        for (const model of ['gemini-3.6-flash','gemini-2.5-flash-lite']) {
-            try {
-                const ctrl = new AbortController();
-                const tid  = setTimeout(() => ctrl.abort(), 20000);
-                const res  = await fetch('https://generativelanguage.googleapis.com/v1beta2/interactions', {
+        setMsg('AI \ubd84\uc11d \uc911...');
+        try {
+            const ctrl = new AbortController();
+            const tid  = setTimeout(() => ctrl.abort(), 20000);
+            const res  = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+                {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-                    body: JSON.stringify({ model, input: prompt }),
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
                     signal: ctrl.signal
-                }).finally(() => clearTimeout(tid));
-                if (res.ok) {
-                    const json = await res.json();
-                    const raw  = json.output_text
-                        ?? json.steps?.find(s => s.type === 'model_output')?.content?.[0]?.text
-                        ?? '{}';
-                    logI('graph', 'Interactions fetch 성공: ' + model);
-                    setMsg('');
-                    return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
                 }
-                const txt = await res.text().catch(() => '');
-                logW('graph', `fetch/interactions/${model} HTTP${res.status} ${txt.slice(0, 60)}`);
-            } catch (e) {
-                logW('graph', `fetch/interactions/${model}: ${e.message}`);
+            ).finally(() => clearTimeout(tid));
+            if (res.ok) {
+                const json = await res.json();
+                const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+                logI('graph', 'fetch \uc131\uacf5: ' + MODEL);
+                setMsg('');
+                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
             }
+            const txt = await res.text().catch(() => '');
+            logW('graph', `fetch HTTP${res.status}: ${txt.slice(0, 80)}`);
+        } catch (e) {
+            logW('graph', `fetch: ${e.message}`);
         }
     }
 
