@@ -864,6 +864,10 @@ function showReadingLayout() {
     _aoiVisible       = true;
     _timerVisible     = true;   // [변경] 타이머 무조건 ON
     _currentQIdx      = 0;
+    _userAnswers      = {};     // [FIX] 세션마다 답지 초기화
+
+    // 선지 선택 UI 초기화 (이전 세션 선택 표시 제거)
+    document.querySelectorAll('.choice-list li.selected').forEach(el => el.classList.remove('selected'));
 
     // HUD 숨기기 (독해 모드 중)
     document.body.classList.add('reading-mode');
