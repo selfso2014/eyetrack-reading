@@ -1935,29 +1935,73 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
     const statusEl = document.getElementById('gazeGraphStatus');
     const setMsg = m => { if (statusEl) statusEl.textContent = m; };
 
-    // ① 공식 Gemini SDK 사용 (AQ 키 완전 지원) — module 로드 후 window._GoogleGenerativeAI
-    const SDK = window._GoogleGenerativeAI;
+    // ① 공식 @google/genai SDK — Interactions API (2026 신형, AQ 키 완전 지원)
+    const SDK = window._GoogleGenAI;
     if (SDK) {
         setMsg('AI 분석 중...');
-        for (const model of ['gemini-2.0-flash','gemini-2.5-flash','gemini-1.5-flash']) {
+        // 신형 모델 우선 시도
+        for (const model of ['gemini-3.6-flash','gemini-2.5-flash-lite','gemini-2.5-flash']) {
             try {
-                const genAI  = new SDK(apiKey);
-                const gm     = genAI.getGenerativeModel({ model });
-                const result = await Promise.race([
-                    gm.generateContent(prompt),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))
+                const client = new SDK({ apiKey });
+                // Interactions API (신형)
+                const interaction = await Promise.race([
+                    client.interactions.create({ model, input: prompt }),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000))
                 ]);
-                const raw = result.response.text();
-                logI('graph', 'Gemini SDK 성공: ' + model);
+                const raw = interaction.output_text ?? '';
+                logI('graph', 'Gemini Interactions API 성공: ' + model);
                 setMsg('');
                 return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
             } catch (e) {
-                logW('graph', `SDK/${model}: ${e.message}`);
+                logW('graph', `Interactions/${model}: ${e.message?.slice(0, 80)}`);
+            }
+            // generateContent 방식도 시도 (신형 SDK)
+            try {
+                const client = new SDK({ apiKey });
+                const response = await Promise.race([
+                    client.models.generateContent({ model, contents: prompt }),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000))
+                ]);
+                const raw = response.text ?? '';
+                logI('graph', 'Gemini generateContent SDK 성공: ' + model);
+                setMsg('');
+                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+            } catch (e) {
+                logW('graph', `genContent/${model}: ${e.message?.slice(0, 80)}`);
             }
         }
     }
 
-    // ② 타임아웃 있는 fetch (8초)
+    // ② raw fetch — Interactions API (v1beta2)
+    {
+        setMsg('AI 분석 중...');
+        for (const model of ['gemini-3.6-flash','gemini-2.5-flash-lite']) {
+            try {
+                const ctrl = new AbortController();
+                const tid  = setTimeout(() => ctrl.abort(), 20000);
+                const res  = await fetch('https://generativelanguage.googleapis.com/v1beta2/interactions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+                    body: JSON.stringify({ model, input: prompt }),
+                    signal: ctrl.signal
+                }).finally(() => clearTimeout(tid));
+                if (res.ok) {
+                    const json = await res.json();
+                    const raw  = json.output_text
+                        ?? json.steps?.find(s => s.type === 'model_output')?.content?.[0]?.text
+                        ?? '{}';
+                    logI('graph', 'Interactions fetch 성공: ' + model);
+                    setMsg('');
+                    return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+                }
+                const txt = await res.text().catch(() => '');
+                logW('graph', `fetch/interactions/${model} HTTP${res.status} ${txt.slice(0, 60)}`);
+            } catch (e) {
+                logW('graph', `fetch/interactions/${model}: ${e.message}`);
+            }
+        }
+    }
+
     const fetchT = (url, opts) => {
         const ctrl = new AbortController();
         const tid  = setTimeout(() => ctrl.abort(), 8000);

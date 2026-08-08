@@ -241,21 +241,21 @@
     </div>
   </div>
 
-  <!-- ═══ Gemini SDK (AQ 키 공식 지원) ═══ -->
+  <!-- ═══ Gemini GenAI SDK (2026 신형 Interactions API 지원) ═══ -->
   <script type="importmap">
   {
     "imports": {
-      "@google/generative-ai": "https://esm.sh/@google/generative-ai@0.24.0"
+      "@google/genai": "https://esm.sh/@google/genai@1"
     }
   }
   </script>
   <script type="module">
-    import { GoogleGenerativeAI } from "@google/generative-ai";
-    window._GoogleGenerativeAI = GoogleGenerativeAI;
+    import { GoogleGenAI } from "@google/genai";
+    window._GoogleGenAI = GoogleGenAI;
   </script>
 
   <!-- ═══ App Script ═══ -->
-  <script src="js/app.js?v=20260807b"></script>
+  <script src="js/app.js?v=20260807c"></script>
 </body>
 
 </html>
