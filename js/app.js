@@ -1935,7 +1935,29 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
     const statusEl = document.getElementById('gazeGraphStatus');
     const setMsg = m => { if (statusEl) statusEl.textContent = m; };
 
-    // 타임아웃 있는 fetch (8초)
+    // ① 공식 Gemini SDK 사용 (AQ 키 완전 지원) — module 로드 후 window._GoogleGenerativeAI
+    const SDK = window._GoogleGenerativeAI;
+    if (SDK) {
+        setMsg('AI 분석 중...');
+        for (const model of ['gemini-2.0-flash','gemini-2.5-flash','gemini-1.5-flash']) {
+            try {
+                const genAI  = new SDK(apiKey);
+                const gm     = genAI.getGenerativeModel({ model });
+                const result = await Promise.race([
+                    gm.generateContent(prompt),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))
+                ]);
+                const raw = result.response.text();
+                logI('graph', 'Gemini SDK 성공: ' + model);
+                setMsg('');
+                return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+            } catch (e) {
+                logW('graph', `SDK/${model}: ${e.message}`);
+            }
+        }
+    }
+
+    // ② 타임아웃 있는 fetch (8초)
     const fetchT = (url, opts) => {
         const ctrl = new AbortController();
         const tid  = setTimeout(() => ctrl.abort(), 8000);
