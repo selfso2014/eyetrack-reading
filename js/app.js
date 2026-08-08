@@ -1970,18 +1970,23 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         });
     }
 
-    // ② generateContent 시도 — x-goog-api-key 헤더 전용 (x-goog-user-project 없이)
+    // ② generateContent 시도 — x-goog-api-key + 정확한 프로젝트 ID
     const errs = [];
-    // v1beta와 v1 두 버전 모두 시도 (1.5모델은 v1, 2.x모델은 v1beta)
     const apiVersions = ['v1beta', 'v1'];
     const extraModels = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro'];
     const allModels = [...new Set([...candidates, ...extraModels])];
+    // 확인된 정확한 프로젝트 ID (Google Cloud Console에서 확인)
+    const PROJECT_ID = 'gen-lang-client-0083588806';
 
     for (const model of allModels) {
         for (const ver of apiVersions) {
             setMsg(`AI 분석 중... (${model})`);
             const url = `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent`;
-            const hdrs = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
+            const hdrs = {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey,
+                'x-goog-user-project': PROJECT_ID
+            };
             try {
                 const res = await fetchT(url, { method: 'POST', headers: hdrs, body: reqBody });
                 if (res.ok) {
