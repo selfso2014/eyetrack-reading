@@ -1507,7 +1507,7 @@ async function periodicRestart() {
     _isRestarting = true;
     _restartCount++;
 
-    logI('restart', `?먥븧??Periodic restart #${_restartCount} starting ?먥븧??);
+    logI('restart', `Periodic restart #${_restartCount} starting...`);
     setStatus('Memory cleanup... (auto-restart)');
 
     // ?? 1. ?몃옒??以묒? ??
@@ -1608,7 +1608,7 @@ async function periodicRestart() {
         }
     }, 800);
 
-    logI('restart', `?먥븧??Restart #${_restartCount} complete ?먥븧??);
+    logI('restart', `Restart #${_restartCount} complete.`);
     _isRestarting = false;
 
     // ?? ?ㅼ쓬 ?ъ떆???덉빟 ??
