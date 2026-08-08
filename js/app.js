@@ -157,7 +157,8 @@ const els = {
     pillTrack: $('pillTrack'),
     pillCal: $('pillCal'),
     calOverlay: $('calOverlay'),
-    calDot: $('calDot'),
+    calDot:      $('calDot'),
+    calPoint:    $('calPoint'),
     calProgress: $('calProgress'),
     calInstruct: $('calInstruction'),
     debugToggle: $('debugToggle'),
@@ -691,11 +692,12 @@ function onCalNextPoint(x, y) {
     _calPointIndex++;
     logI('cal', `Next point #${_calPointIndex}: (${x.toFixed(0)}, ${y.toFixed(0)})`);
 
-    // 캘리브레이션 점 위치 이동
-    if (els.calDot) {
-        els.calDot.style.position = 'fixed';
-        els.calDot.style.left = `${x - 18}px`;
-        els.calDot.style.top = `${y - 18}px`;
+    // 점+링 컨테이너를 (x,y) 중앙으로 이동 (컨테이너 80px → 절반=40)
+    if (els.calPoint) {
+        els.calPoint.style.position = 'fixed';
+        els.calPoint.style.left = `${x - 40}px`;
+        els.calPoint.style.top  = `${y - 40}px`;
+        els.calPoint.style.transform = 'none';
     }
 
     // SDK에 샘플 수집 시작 알림 (약간의 딜레이 후)
@@ -714,18 +716,12 @@ function onCalProgress(progress) {
     const pct  = Math.round(progress * 100);
     const CIRC = 201.06;  // 2π × 32
 
-    const ring  = document.getElementById('calRingFill');
-    const label = document.getElementById('calProgressLabel');
-
+    const ring = document.getElementById('calRingFill');
     if (ring) {
         ring.style.strokeDashoffset = CIRC * (1 - progress);
-        // 진행도에 따른 색상 전환
         ring.style.stroke = pct >= 100 ? '#34d399'
                           : pct >=  60 ? '#818cf8'
                           : '#a78bfa';
-    }
-    if (label) {
-        label.textContent = pct >= 100 ? '완료 ✓' : '눈 맞추는 중...';
     }
     logI('cal', `Progress: ${pct}%`);
 }
@@ -741,10 +737,8 @@ function onCalFinish(calibrationData) {
     _calProgress  = 0;
     _calPointIndex = 0;
     // SVG 링 초기화
-    const ring  = document.getElementById('calRingFill');
-    const label = document.getElementById('calProgressLabel');
-    if (ring)  { ring.style.strokeDashoffset = '201.06'; ring.style.stroke = '#a78bfa'; }
-    if (label) label.textContent = '준비 중...';
+    const ring = document.getElementById('calRingFill');
+    if (ring) { ring.style.strokeDashoffset = '201.06'; ring.style.stroke = '#a78bfa'; }
 
     // 콜백 정리
     _seeso.removeCalibrationNextPointCallback(onCalNextPoint);

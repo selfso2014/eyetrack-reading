@@ -260,22 +260,36 @@ body {
 }
 #calOverlay.active { display: flex; }
 
+/* 점 + 링 통합 컨테이너 — JS가 left/top으로 이동 */
+#calPoint {
+  position: fixed;
+  width: 80px; height: 80px;
+  /* 초기 중앙 배치 (JS에서 덮어씀) */
+  top: 50%; left: 50%;
+  transform: translate(-40px, -40px);
+  z-index: 155;
+}
+
+/* SVG 링: 컨테이너 전체 채움 */
+#calPoint svg {
+  position: absolute;
+  inset: 0;
+}
+
+/* 빛나는 점: 컨테이너 정중앙 */
 #calDot {
+  position: absolute;
   width: 36px; height: 36px;
+  top: 22px; left: 22px;   /* (80 - 36) / 2 = 22 */
   border-radius: 50%;
   background: radial-gradient(circle, #fff 0%, var(--accent) 60%, transparent 100%);
   box-shadow: 0 0 30px var(--accent-glow), 0 0 60px var(--accent-glow);
   animation: calPulse 1.2s ease-in-out infinite;
+  transform-origin: 18px 18px;
 }
 @keyframes calPulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.25); opacity: 0.7; }
-}
-
-#calProgress {
-  position: absolute; bottom: 52px;
-  display: flex; flex-direction: column;
-  align-items: center; gap: 8px;
 }
 
 /* SVG 원형 프로그레스 링 */
@@ -295,18 +309,15 @@ body {
   transform-origin: 40px 40px;
   transition: stroke-dashoffset .35s ease, stroke .35s ease;
 }
-#calProgressLabel {
-  font-size: 13px; font-weight: 500;
-  color: rgba(232,236,244,.55);
-  letter-spacing: .3px;
-}
 
 #calInstruction {
   position: absolute; top: 60px;
   font-size: 16px; font-weight: 500;
   color: rgba(232,236,244,.75);
   text-align: center; max-width: 400px; line-height: 1.6;
+  z-index: 156;
 }
+
 
 
 /* ?? Memory monitor ?? */
