@@ -1,4 +1,4 @@
-﻿// js/app.js ??SeeSo Eye Tracking with iOS Crash Prevention
+// js/app.js ??SeeSo Eye Tracking with iOS Crash Prevention
 // All patches derived from SDK v2.5.2 analysis
 // webpack-loader 肄붾뱶 ?몃씪??(file:// ?꾨줈?좎퐳 吏?? XHR ?대갚 ?ы븿)
 async function loadWebpackModule(url) {
@@ -1700,12 +1700,12 @@ if (els.btnStart) {
     };
 }
 
-// ?뚮컢?????ㅼ젣 罹섎━釉뚮젅?댁뀡 ?쒖옉
+// 워밍업 → 실제 캘리브레이션 시작
 const btnWarmupStart = document.getElementById('btnWarmupStart');
 if (btnWarmupStart) {
     btnWarmupStart.onclick = async () => {
         btnWarmupStart.disabled = true;
-        btnWarmupStart.textContent = '?쒖옉 以?..';
+        btnWarmupStart.textContent = '시작 중...';
         document.getElementById('warmupScreen')?.classList.add('hidden');
         await boot();
     };
