@@ -76,9 +76,15 @@
 
   <!-- ═══ Calibration Overlay ═══ -->
   <div id="calOverlay">
-    <p id="calInstruction">Look at the glowing dot and keep your head still.</p>
+    <p id="calInstruction">빛나는 점을 바라봐 주세요. 머리는 고정하세요.</p>
     <div id="calDot"></div>
-    <div id="calProgress">0%</div>
+    <div id="calProgress">
+      <svg viewBox="0 0 80 80" width="80" height="80" style="overflow:visible">
+        <circle class="cal-ring-bg" cx="40" cy="40" r="32"/>
+        <circle class="cal-ring-fill" id="calRingFill" cx="40" cy="40" r="32"/>
+      </svg>
+      <span id="calProgressLabel">준비 중...</span>
+    </div>
   </div>
 
   <!-- ═══ Memory Monitor (bottom-left) ═══ -->

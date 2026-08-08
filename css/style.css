@@ -273,16 +273,41 @@ body {
 }
 
 #calProgress {
-  position: absolute; bottom: 60px;
-  font-size: 18px; font-weight: 600;
-  color: var(--text-primary);
+  position: absolute; bottom: 52px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+}
+
+/* SVG 원형 프로그레스 링 */
+.cal-ring-bg {
+  fill: none;
+  stroke: rgba(255,255,255,.12);
+  stroke-width: 5;
+}
+.cal-ring-fill {
+  fill: none;
+  stroke: #a78bfa;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 201.06;   /* 2π × 32 */
+  stroke-dashoffset: 201.06;  /* 처음엔 비어있음 */
+  transform: rotate(-90deg);
+  transform-origin: 40px 40px;
+  transition: stroke-dashoffset .35s ease, stroke .35s ease;
+}
+#calProgressLabel {
+  font-size: 13px; font-weight: 500;
+  color: rgba(232,236,244,.55);
+  letter-spacing: .3px;
 }
 
 #calInstruction {
   position: absolute; top: 60px;
-  font-size: 15px; color: var(--text-dim);
-  text-align: center; max-width: 400px; line-height: 1.5;
+  font-size: 16px; font-weight: 500;
+  color: rgba(232,236,244,.75);
+  text-align: center; max-width: 400px; line-height: 1.6;
 }
+
 
 /* ?? Memory monitor ?? */
 #memMonitor {

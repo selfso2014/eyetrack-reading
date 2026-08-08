@@ -679,7 +679,7 @@ function startCalibration() {
         els.calOverlay?.classList.add('active');
         setPill(els.pillCal, 'Cal: running', 'warn');
         setStatus('Look at the dot and keep your head still.');
-        if (els.calInstruct) els.calInstruct.textContent = 'Look at the glowing dot. Keep your head still.';
+        if (els.calInstruct) els.calInstruct.textContent = '빛나는 점을 바라봐 주세요. 머리는 고정하세요.';
     } else {
         logE('cal', 'startCalibration returned false');
         setPill(els.pillCal, 'Cal: failed', 'error');
@@ -711,8 +711,23 @@ function onCalNextPoint(x, y) {
 
 function onCalProgress(progress) {
     _calProgress = progress;
-    if (els.calProgress) els.calProgress.textContent = `${Math.round(progress * 100)}%`;
-    logI('cal', `Progress: ${Math.round(progress * 100)}%`);
+    const pct  = Math.round(progress * 100);
+    const CIRC = 201.06;  // 2π × 32
+
+    const ring  = document.getElementById('calRingFill');
+    const label = document.getElementById('calProgressLabel');
+
+    if (ring) {
+        ring.style.strokeDashoffset = CIRC * (1 - progress);
+        // 진행도에 따른 색상 전환
+        ring.style.stroke = pct >= 100 ? '#34d399'
+                          : pct >=  60 ? '#818cf8'
+                          : '#a78bfa';
+    }
+    if (label) {
+        label.textContent = pct >= 100 ? '완료 ✓' : '눈 맞추는 중...';
+    }
+    logI('cal', `Progress: ${pct}%`);
 }
 
 function onCalFinish(calibrationData) {
@@ -725,6 +740,11 @@ function onCalFinish(calibrationData) {
 
     _calProgress  = 0;
     _calPointIndex = 0;
+    // SVG 링 초기화
+    const ring  = document.getElementById('calRingFill');
+    const label = document.getElementById('calProgressLabel');
+    if (ring)  { ring.style.strokeDashoffset = '201.06'; ring.style.stroke = '#a78bfa'; }
+    if (label) label.textContent = '준비 중...';
 
     // 콜백 정리
     _seeso.removeCalibrationNextPointCallback(onCalNextPoint);
