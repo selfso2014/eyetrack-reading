@@ -157,6 +157,100 @@ body {
   text-align: center; margin: 0; line-height: 1.6;
 }
 
+/* ===== Warm-up Screen ===== */
+#warmupScreen {
+  position: fixed; inset: 0; z-index: 198;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 20px; padding: 28px;
+  background: radial-gradient(ellipse at 50% 30%, #0d1433 0%, #0a0e1a 70%);
+  animation: wu-fade-in .35s ease;
+}
+#warmupScreen.hidden { display: none; }
+@keyframes wu-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.wu-eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 1.8px;
+  text-transform: uppercase; color: #6c7bff;
+  background: rgba(108,123,255,.12);
+  border: 1px solid rgba(108,123,255,.3);
+  padding: 5px 14px; border-radius: 99px;
+}
+
+.wu-title {
+  font-size: 42px; font-weight: 800; line-height: 1.2;
+  text-align: center; color: var(--text-primary); margin: 0;
+}
+.wu-accent {
+  background: linear-gradient(135deg, #f472b6, #a78bfa);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.wu-sub {
+  font-size: 16px; color: rgba(232,236,244,.55);
+  text-align: center; margin: 0;
+}
+
+.wu-steps {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  justify-content: center; max-width: 580px;
+}
+.wu-step {
+  flex: 1; min-width: 140px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px; padding: 20px 16px;
+  text-align: center;
+  display: flex; flex-direction: column; gap: 6px;
+  transition: border-color .2s;
+}
+.wu-step:hover { border-color: rgba(108,123,255,.4); }
+.wu-step-num {
+  font-size: 24px; font-weight: 800; color: #6c7bff;
+}
+.wu-step-title {
+  font-size: 14px; font-weight: 700; color: var(--text-primary);
+}
+.wu-step-desc {
+  font-size: 12px; color: rgba(232,236,244,.4);
+}
+
+.wu-hint {
+  font-size: 13px; color: rgba(232,236,244,.55);
+  background: rgba(251,191,36,.05);
+  border: 1px solid rgba(251,191,36,.2);
+  padding: 11px 22px; border-radius: 12px;
+  max-width: 480px; text-align: center; line-height: 1.65;
+}
+
+#btnWarmupStart {
+  padding: 15px 54px;
+  font-size: 16px; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border: none; border-radius: 999px; cursor: pointer;
+  box-shadow: 0 4px 28px rgba(124,58,237,.45);
+  transition: transform .2s, box-shadow .2s;
+  letter-spacing: .4px;
+}
+#btnWarmupStart:hover { transform: translateY(-3px); box-shadow: 0 10px 36px rgba(124,58,237,.65); }
+#btnWarmupStart:active { transform: scale(.97); }
+#btnWarmupStart:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+.wu-note {
+  font-size: 11px; color: rgba(232,236,244,.22);
+  text-align: center; margin: 0;
+}
+
+@media (max-width: 600px) {
+  .wu-title { font-size: 30px; }
+  .wu-sub   { font-size: 14px; }
+  .wu-steps { gap: 10px; }
+  .wu-step  { min-width: 110px; padding: 14px 10px; }
+}
 
 /* ?? Calibration overlay ?? */
 #calOverlay {

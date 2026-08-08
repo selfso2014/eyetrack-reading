@@ -1787,11 +1787,21 @@ async function boot() {
 
 // Start button handler
 if (els.btnStart) {
-    els.btnStart.onclick = async () => {
-        els.btnStart.disabled = true;
-        els.btnStart.textContent = 'Initializing...';
-        await boot();
+    els.btnStart.onclick = () => {
+        // 인트로 → 워밍업 화면으로 전환
         els.startScreen?.classList.add('hidden');
+        document.getElementById('warmupScreen')?.classList.remove('hidden');
+    };
+}
+
+// 워밍업 → 실제 캘리브레이션 시작
+const btnWarmupStart = document.getElementById('btnWarmupStart');
+if (btnWarmupStart) {
+    btnWarmupStart.onclick = async () => {
+        btnWarmupStart.disabled = true;
+        btnWarmupStart.textContent = '시작 중...';
+        document.getElementById('warmupScreen')?.classList.add('hidden');
+        await boot();
     };
 }
 
