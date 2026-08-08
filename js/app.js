@@ -1970,44 +1970,42 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         });
     }
 
-    // ② 탐지된 모델로 순서대로 generateContent 시도
+    // ② generateContent 시도 — AQ 신형 키: x-goog-api-key 헤더 필수
     const errs = [];
-    for (const model of candidates) {
-        setMsg(`AI 분석 중... (${model})`);
-        // ?key= 방식과 x-goog-api-key 헤더 방식을 모두 시도
-        const urlA = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const urlB = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-        let res;
-        try { res = await fetchT(urlA, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reqBody }); }
-        catch (_) {}
-        if (!res || !res.ok) {
-            try { res = await fetchT(urlB, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: reqBody }); }
-            catch (_) {}
-        }
-        if (!res || !res.ok) {
-            const urlC = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-            try { res = await fetchT(urlC, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: reqBody }); }
-            catch (_) {}
-        }
-        try {
-            if (!res) throw new Error('no response');
-            if (!res || !res.ok) {
+    const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+    // 프로젝트 후보 (x-goog-user-project 헤더용)
+    const projCandidates = ['ReadSmart02260808','readsmart02260808',''];
+
+    // 추가 모델 후보 (탐지 목록에 없을 수 있는 최신 모델)
+    const extraModels = ['gemini-3.5-flash','gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash'];
+    const allModels = [...new Set([...candidates, ...extraModels])];
+
+    for (const model of allModels) {
+        for (const proj of projCandidates) {
+            setMsg(`AI 분석 중... (${model})`);
+            const hdrs = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
+            if (proj) hdrs['x-goog-user-project'] = proj;
+            const url = `${baseUrl}/${model}:generateContent`;
+            try {
+                const res = await fetchT(url, { method: 'POST', headers: hdrs, body: reqBody });
+                if (res.ok) {
+                    const json = await res.json();
+                    const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                    logI('graph', `AI 성공: ${model} (proj=${proj||'none'})`);
+                    setMsg('');
+                    return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+                }
                 const txt = await res.text().catch(() => '');
-                errs.push(`${model} HTTP${res.status}`);
+                errs.push(`${model}[${proj||'np'}] HTTP${res.status}`);
                 logW('graph', errs.at(-1) + ' ' + txt.slice(0, 60));
-                continue;
+            } catch (e) {
+                errs.push(`${model}: ${e.message}`);
+                logW('graph', errs.at(-1));
             }
-            const json = await res.json();
-            const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            logI('graph', 'AI 성공: ' + model);
-            setMsg('');
-            return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
-        } catch (e) {
-            errs.push(`${model}: ${e.message}`);
-            logW('graph', errs.at(-1));
         }
     }
-    throw new Error(errs.join(' | '));
+
+    throw new Error(errs.slice(-4).join(' | '));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
