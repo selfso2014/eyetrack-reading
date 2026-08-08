@@ -2213,30 +2213,41 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
         // ── 2. 답지선택 O/X ──
         else if (row.key === 'answer') {
             document.querySelectorAll('.question-block').forEach((blk, qi) => {
-                const sel     = _userAnswers[qi];
-                const aoiKey  = blk.dataset.aoi;            // e.g. q-1
-                const dwellMs = dwell[aoiKey] || 0;
+                const aoiKey  = blk.dataset.aoi;
+                const correct = parseInt(blk.dataset.answer || '0', 10);
 
-                if (sel) {
-                    // 선택된 답지: O 또는 X
-                    const correct = parseInt(blk.dataset.answer || '0', 10);
-                    const ok = sel.choice === correct;
-                    const x  = xT(sel.t);
+                // ① DOM에서 직접 읽기 (화면에 선택됨 = 무조건 표시)
+                const allLis    = Array.from(blk.querySelectorAll('.choice-list li'));
+                const selLi     = blk.querySelector('.choice-list li.selected');
+                const domChoice = selLi ? allLis.indexOf(selLi) + 1 : 0;
+
+                // ② 타임스탬프: _userAnswers 우선, 없으면 gaze log에서 마지막 본 시각 추정
+                const stored = _userAnswers[qi];
+                let markT = stored ? stored.t : null;
+                if (markT === null && domChoice) {
+                    for (let i = log.length - 1; i >= 0; i--) {
+                        if ((log[i].aois || []).includes(aoiKey)) { markT = log[i].t; break; }
+                    }
+                    if (markT === null) markT = totalMs * 0.5;
+                }
+
+                if (domChoice) {
+                    const ok = domChoice === correct;
+                    const x  = Math.min(xT(markT), LW + PAD + GW - 12);
                     ctx.fillStyle = ok ? '#34d399' : '#ef4444';
-                    ctx.font = 'bold 13px Inter,sans-serif';
+                    ctx.font = 'bold 14px Inter,sans-serif';
                     ctx.textAlign = 'left';
-                    ctx.fillText(ok ? 'O' : 'X', x - 5, ry + row.h / 2 + 5);
+                    ctx.fillText(ok ? 'O' : 'X', x - 6, ry + row.h / 2 + 5);
                     ctx.strokeStyle = ok ? 'rgba(52,211,153,.5)' : 'rgba(239,68,68,.5)';
                     ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
                     ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
                     ctx.setLineDash([]);
-                } else if (dwellMs > 200) {
-                    // 봤지만 답안 선택 안 함 → 회색 '?' 표시 (타임라인 우측 끝에)
-                    const x = LW + PAD + GW - 20;  // 항상 오른쪽 끝 고정
-                    ctx.fillStyle = 'rgba(148,163,184,.6)';
+                } else if ((dwell[aoiKey] || 0) > 200) {
+                    // 봤지만 선택 안 함
+                    ctx.fillStyle = 'rgba(148,163,184,.55)';
                     ctx.font = 'bold 12px Inter,sans-serif';
                     ctx.textAlign = 'left';
-                    ctx.fillText('?', x, ry + row.h / 2 + 5);
+                    ctx.fillText('?', LW + PAD + GW - 18, ry + row.h / 2 + 5);
                 }
             });
         }
