@@ -1938,10 +1938,13 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
 
     const MODEL = 'gemini-2.5-flash';   // 단일 모델 고정
 
-    // ① SDK generateContent (AQ \ud0a4 \uc9c0\uc6d0)
+    const statusEl = document.getElementById('gazeGraphStatus');
+    const setMsg = m => { if (statusEl) statusEl.textContent = m; };
+
+    // ① SDK generateContent (AQ 키 지원)
     const SDK = window._GoogleGenAI;
     if (SDK) {
-        setMsg('AI \ubd84\uc11d \uc911...');
+        setMsg('AI 분석 중...');
         try {
             const client   = new SDK({ apiKey });
             const response = await Promise.race([
@@ -2228,12 +2231,12 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                     ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
                     ctx.setLineDash([]);
                 } else if (dwellMs > 200) {
-                    // 돈 보았지만 답안 답습 안 함 → '?가' 표시
-                    const x = xT(dwellMs);  // 체류 시간 위치에 표시
+                    // 봤지만 답안 선택 안 함 → 회색 '?' 표시 (타임라인 우측 끝에)
+                    const x = LW + PAD + GW - 20;  // 항상 오른쪽 끝 고정
                     ctx.fillStyle = 'rgba(148,163,184,.6)';
-                    ctx.font = 'bold 13px Inter,sans-serif';
+                    ctx.font = 'bold 12px Inter,sans-serif';
                     ctx.textAlign = 'left';
-                    ctx.fillText('?', Math.min(x, LW + PAD + GW - 15), ry + row.h / 2 + 5);
+                    ctx.fillText('?', x, ry + row.h / 2 + 5);
                 }
             });
         }
