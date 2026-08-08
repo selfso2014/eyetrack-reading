@@ -984,6 +984,7 @@ function showQuestion(qIdx) {
             li.classList.add('selected');
             const elapsed = _sessionStartTime ? Date.now() - _sessionStartTime : 0;
             _userAnswers[qIdx] = { choice: idx + 1, t: elapsed };
+            logI('answer', `Q${qIdx} 답지 선택: ${idx+1}번 (t=${elapsed}ms)`);
         };
     });
 }
@@ -2230,19 +2231,31 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
         // ── 2. 답지선택 O/X ──
         else if (row.key === 'answer') {
             document.querySelectorAll('.question-block').forEach((blk, qi) => {
-                const sel = _userAnswers[qi];
-                if (!sel) return;
-                const correct = parseInt(blk.dataset.answer || '0', 10);
-                const ok = sel.choice === correct;
-                const x  = xT(sel.t);
-                ctx.fillStyle = ok ? '#34d399' : '#ef4444';
-                ctx.font = 'bold 13px Inter,sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(ok ? 'O' : 'X', x - 5, ry + row.h / 2 + 5);
-                ctx.strokeStyle = ok ? 'rgba(52,211,153,.5)' : 'rgba(239,68,68,.5)';
-                ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-                ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
-                ctx.setLineDash([]);
+                const sel     = _userAnswers[qi];
+                const aoiKey  = blk.dataset.aoi;            // e.g. q-1
+                const dwellMs = dwell[aoiKey] || 0;
+
+                if (sel) {
+                    // 선택된 답지: O 또는 X
+                    const correct = parseInt(blk.dataset.answer || '0', 10);
+                    const ok = sel.choice === correct;
+                    const x  = xT(sel.t);
+                    ctx.fillStyle = ok ? '#34d399' : '#ef4444';
+                    ctx.font = 'bold 13px Inter,sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(ok ? 'O' : 'X', x - 5, ry + row.h / 2 + 5);
+                    ctx.strokeStyle = ok ? 'rgba(52,211,153,.5)' : 'rgba(239,68,68,.5)';
+                    ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+                    ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + row.h); ctx.stroke();
+                    ctx.setLineDash([]);
+                } else if (dwellMs > 200) {
+                    // 돈 보았지만 답안 답습 안 함 → '?가' 표시
+                    const x = xT(dwellMs);  // 체류 시간 위치에 표시
+                    ctx.fillStyle = 'rgba(148,163,184,.6)';
+                    ctx.font = 'bold 13px Inter,sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('?', Math.min(x, LW + PAD + GW - 15), ry + row.h / 2 + 5);
+                }
             });
         }
 
