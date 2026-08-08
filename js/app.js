@@ -502,7 +502,8 @@ let _replayRAF    = null;
 
 // ── 사용자 답지 선택 기록 ──
 let _userAnswers = {};  // { qIdx: { choice:1~5, t:ms } }
-let _coachingCache  = null;  // AI 코칭 리포트 캐시
+let _coachingCache   = null;  // AI 코칭 리포트 캐시
+let _lastSessionSnap = null;  // 세션 종료 시 저장된 계산 데이터
 
 // ── 지문 사전 분석 (하드코딩 — 지문 교체 시에만 편집) ──
 const PASSAGE_ANALYSIS = {
@@ -852,7 +853,37 @@ function checkAOI(gazeX, gazeY) {
     _updateAOIDebugHud(gazeX, gazeY, currentHit, now);
 }
 
+/** 세션 종료: 트래킹 AOI 중단, 리플레이/그래프 버튼 활성화 */
+function endSession() {
+    _readingActive = false;
+    clearAllAOI();
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    const btnReplay    = document.getElementById('btnReplay');
+    const btnGazeGraph = document.getElementById('btnGazeGraph');
+    if (btnReplay)    btnReplay.disabled    = false;
+    if (btnGazeGraph) { btnGazeGraph.disabled = false; btnGazeGraph.onclick = showGazeGraph; }
 
+    // 코칭 버튼 즉시 활성화 (시선그래프 없이도 작동)
+    if (_gazeLog.length > 0) {
+        const log         = _gazeLog.slice();
+        const totalMs     = log[log.length - 1].t;
+        const dwell       = computeDwellPerAOI(log);
+        const fixations   = computeFixations(log);
+        const regressions = computeRegressions(log);
+        const transitions = computeQPTransitions(log);
+        const efficiency  = computeEfficiency(transitions, _TOTAL_QUESTIONS || 3);
+        const fixCounts = {}, regCounts = {};
+        fixations.forEach(f   => { if (f.aoiId) fixCounts[f.aoiId] = (fixCounts[f.aoiId] || 0) + 1; });
+        regressions.forEach(r => { if (r.aoiId) regCounts[r.aoiId] = (regCounts[r.aoiId] || 0) + 1; });
+        _lastSessionSnap = { log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency };
+
+        const btnCr = document.getElementById('btnCoachingReport');
+        if (btnCr) { btnCr.disabled = false; btnCr.onclick = showCoachingReport; }
+    }
+
+    setStatus('독해 완료! ▶ 리플레이 버튼으로 시선을 확인하세요.');
+    logI('reading', `세션 종료. 쳙 ${_gazeLog.length}프레임 기록.`);
+}
 
 function showReadingLayout() {
     const layout = document.getElementById('readingLayout');
@@ -1018,18 +1049,7 @@ function navigateQuestion(delta) {
     showQuestion(newIdx);
 }
 
-/** 세션 종료: 트래킹 AOI 중단, 리플레이/그래프 버튼 활성화 */
-function endSession() {
-    _readingActive = false;
-    clearAllAOI();
-    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-    const btnReplay    = document.getElementById('btnReplay');
-    const btnGazeGraph = document.getElementById('btnGazeGraph');
-    if (btnReplay)    btnReplay.disabled    = false;
-    if (btnGazeGraph) { btnGazeGraph.disabled = false; btnGazeGraph.onclick = showGazeGraph; }
-    setStatus('독해 완료! ▶ 리플레이 버튼으로 시선을 확인하세요.');
-    logI('reading', `세션 종료. 총 ${_gazeLog.length}프레임 기록.`);
-}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §14-C. AOI 목록 구성 + 드웰 판정
@@ -2038,12 +2058,31 @@ function showCoachingReport() {
     const crBody = document.getElementById('crBody');
     if (!panel) return;
     panel.classList.remove('hidden');
+
+    // 이미 캐시된 경우 바로 표시
     if (_coachingCache && _coachingCache.overall) {
         _renderCoachingReport(_coachingCache);
-    } else {
-        if (crBody) crBody.innerHTML = '<div class="cr-loading">🔄 AI 코칭 리포트 생성 중... 잠시 후 다시 클릭하세요.</div>';
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
     }
+
+    // 아직 생성 안 됨 → 로딩 표시 후 자동 실행
+    if (crBody) crBody.innerHTML = '<div class="cr-loading">🔄 AI 코칭 리포트 생성 중...</div>';
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const apiKey = localStorage.getItem('gemini_api_key') || '';
+    if (!apiKey) {
+        if (crBody) crBody.innerHTML = '<div class="cr-loading">⚠️ API 키가 없습니다. 시선그래프 버튼으로 키를 입력해 주세요.</div>';
+        return;
+    }
+    if (!_lastSessionSnap) {
+        if (crBody) crBody.innerHTML = '<div class="cr-loading">⚠️ 세션 데이터가 없습니다. 세션을 먼저 완료해 주세요.</div>';
+        return;
+    }
+    const { log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency } = _lastSessionSnap;
+    const ai = { responseType: {}, fluencyBottleneck: {} };
+    _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency, ai, apiKey)
+        .then(() => { if (_coachingCache) _renderCoachingReport(_coachingCache); });
 }
 
 function _renderCoachingReport(data) {

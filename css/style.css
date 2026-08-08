@@ -76,36 +76,87 @@ body {
   position: fixed; inset: 0; z-index: 200;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: 24px;
-  background: var(--bg-primary);
+  gap: 18px;
+  background: radial-gradient(ellipse at 50% 30%, #0d1433 0%, #0a0e1a 70%);
   transition: opacity 0.5s, visibility 0.5s;
+  padding: 24px;
 }
 #startScreen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 
+/* 상단 eyebrow 라벨 */
+.ss-eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: #6c7bff;
+  background: rgba(108,123,255,.12);
+  border: 1px solid rgba(108,123,255,.3);
+  padding: 5px 14px; border-radius: 99px;
+}
+
+/* 메인 타이틀 */
 #startScreen h1 {
-  font-size: 32px; font-weight: 700;
+  font-size: 46px; font-weight: 800; line-height: 1.15;
+  text-align: center; margin: 0;
+  color: var(--text-primary);
+}
+.ss-accent {
+  display: block;
   background: linear-gradient(135deg, #6c7bff, #a78bfa, #f472b6);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-#startScreen p {
-  font-size: 14px; color: var(--text-dim);
-  max-width: 420px; text-align: center; line-height: 1.6;
+
+/* 큰따옴표 태그라인 */
+.ss-tagline {
+  font-size: 18px; font-weight: 500;
+  color: rgba(232,236,244,.65);
+  font-style: italic; text-align: center;
+  margin: 0;
 }
 
+/* 설명문 */
+.ss-desc {
+  font-size: 14px; color: var(--text-dim);
+  max-width: 440px; text-align: center; line-height: 1.75;
+  margin: 0;
+}
+
+/* 기능 뱃지 3개 */
+.ss-badges {
+  display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+}
+.ss-badge {
+  font-size: 12px; font-weight: 600;
+  padding: 6px 14px; border-radius: 99px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(232,236,244,.8);
+  letter-spacing: .3px;
+  transition: background .2s;
+}
+
+/* 시작 버튼 */
 #btnStart {
-  padding: 14px 48px;
-  font-size: 16px; font-weight: 600;
+  padding: 15px 52px;
+  font-size: 16px; font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), #a78bfa);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
   border: none; border-radius: 999px;
   cursor: pointer;
-  box-shadow: 0 4px 24px var(--accent-glow);
+  box-shadow: 0 4px 28px rgba(124,58,237,.45);
   transition: transform 0.2s, box-shadow 0.2s;
+  letter-spacing: .4px;
 }
-#btnStart:hover { transform: translateY(-2px); box-shadow: 0 8px 32px var(--accent-glow); }
+#btnStart:hover { transform: translateY(-3px); box-shadow: 0 10px 36px rgba(124,58,237,.65); }
 #btnStart:active { transform: scale(0.97); }
-#btnStart:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+#btnStart:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* 하단 안내문 */
+.ss-note {
+  font-size: 11px; color: rgba(232,236,244,.3);
+  text-align: center; margin: 0; line-height: 1.6;
+}
+
 
 /* ?? Calibration overlay ?? */
 #calOverlay {
@@ -223,8 +274,9 @@ body {
 /* ?? Responsive ?? */
 @media (max-width: 600px) {
   #hud { max-width: calc(100vw - 40px); }
-  #startScreen h1 { font-size: 24px; }
-  #startScreen p { font-size: 13px; padding: 0 20px; }
+  #startScreen h1 { font-size: 30px; }
+  .ss-tagline { font-size: 15px; }
+  .ss-desc { font-size: 13px; padding: 0 10px; }
   #debugPanel { width: calc(100vw - 40px); }
 }
 
