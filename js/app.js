@@ -2198,6 +2198,12 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
 
         // ── 1. 세부영역 타임라인 ──
         if (row.key === 'timeline') {
+            // data-qnum 기반 라벨 (q-1→Q0, q-2→Q1, q-3→Q2)
+            const qLbl = k => {
+                if (!k || !k.startsWith('q-')) return (k||'').replace('para-','P');
+                const el = document.querySelector(`[data-aoi="${k}"]`);
+                return 'Q' + (el ? el.dataset.qnum : parseInt(k.replace('q-',''),10)-1);
+            };
             let prev = null, st = 0;
             log.forEach(fr => {
                 const aoi = (fr.aois || [])[0] || null;
@@ -2209,7 +2215,7 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                         if (w > 18) {
                             ctx.fillStyle = 'rgba(255,255,255,.75)';
                             ctx.font = '9px Inter,sans-serif';
-                            ctx.fillText(prev.replace('para-','P').replace('q-','Q'), x1 + 3, ry + row.h / 2 + 4);
+                            ctx.fillText(qLbl(prev), x1 + 3, ry + row.h / 2 + 4);
                         }
                     }
                     prev = aoi; st = fr.t;
@@ -2251,15 +2257,17 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                 }
                 bx += w;
             });
-            // 근거문단 별표
+            // 근거문단 별표 (Q0,Q1,Q2 표시)
             [1,2,3].forEach(qi => {
                 const srcs = PASSAGE_ANALYSIS.sourceParagraph[`q-${qi}`] || [];
+                const el   = document.querySelector(`[data-aoi="q-${qi}"]`);
+                const qn   = el ? el.dataset.qnum : qi - 1;  // 0-indexed
                 let bx2 = LW + PAD;
                 AOIS.forEach(aoi => {
                     const w = (dwell[aoi] || 0) / td * GW;
                     if (srcs.includes(aoi)) {
                         ctx.fillStyle = '#fbbf24'; ctx.font = '10px Inter,sans-serif';
-                        ctx.fillText(`★Q${qi}`, bx2 + w / 2 - 12, ry + 11);
+                        ctx.fillText(`★Q${qn}`, bx2 + w / 2 - 12, ry + 11);
                     }
                     bx2 += w;
                 });
@@ -2376,7 +2384,12 @@ function drawGazeGraph(canvas, log, totalMs, numQ, dwell, fixations, regressions
                 ctx.fillStyle = AOI_CLR[aoi] || '#475569';
                 ctx.fillRect(bx, ry + row.h - bh - 8, bw, bh);
                 ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '8px Inter,sans-serif';
-                ctx.fillText(aoi.replace('para-','P').replace('q-','Q'), bx + 1, ry + row.h - 1);
+                // 체류시간 x축도 data-qnum 기반 Q0/Q1/Q2 표시
+                const el2 = aoi.startsWith('q-') ? document.querySelector(`[data-aoi="${aoi}"]`) : null;
+                const lbl2 = aoi.startsWith('q-')
+                    ? 'Q' + (el2 ? el2.dataset.qnum : parseInt(aoi.replace('q-',''),10)-1)
+                    : aoi.replace('para-','P');
+                ctx.fillText(lbl2, bx + 1, ry + row.h - 1);
             });
         }
 
