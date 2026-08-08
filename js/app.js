@@ -1961,7 +1961,14 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         }
     } catch (e) { logW('graph', '모델 탐지 실패: ' + e.message); }
 
-    if (!candidates.length) candidates = ['gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro'];
+    if (!candidates.length) candidates = ['gemini-1.5-flash','gemini-1.5-pro','gemini-1.0-pro'];
+    else {
+        // 1.5/1.0 구형 모델 우선 정렬
+        candidates.sort((a, b) => {
+            const score = m => m.includes('1.5') ? 0 : m.includes('1.0') ? 1 : m.includes('pro') ? 2 : 3;
+            return score(a) - score(b);
+        });
+    }
 
     // ② 탐지된 모델로 순서대로 generateContent 시도
     const errs = [];
@@ -1975,6 +1982,11 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
         catch (_) {}
         if (!res || !res.ok) {
             try { res = await fetchT(urlB, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: reqBody }); }
+            catch (_) {}
+        }
+        if (!res || !res.ok) {
+            const urlC = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+            try { res = await fetchT(urlC, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: reqBody }); }
             catch (_) {}
         }
         try {
