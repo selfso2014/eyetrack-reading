@@ -1973,8 +1973,8 @@ Q↔P 전환(첫10개):${JSON.stringify(payload.transitions.slice(0,10))}
     // ② generateContent 시도 — AQ 신형 키: x-goog-api-key 헤더 필수
     const errs = [];
     const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
-    // 프로젝트 후보 (x-goog-user-project 헤더용)
-    const projCandidates = ['ReadSmart02260808','readsmart02260808',''];
+    // 프로젝트 후보 (x-goog-user-project 헤더용, AI Studio 스크린샷 기반)
+    const projCandidates = ['ReadSmart02260808','readsmart02260808','gen_lang_client-0083588806',''];
 
     // 추가 모델 후보 (탐지 목록에 없을 수 있는 최신 모델)
     const extraModels = ['gemini-3.5-flash','gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash'];
