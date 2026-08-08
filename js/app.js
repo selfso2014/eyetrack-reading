@@ -1942,7 +1942,7 @@ async function _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts,
     } catch (e) {
         logW('coaching', '코칭 실패: ' + e.message);
         _coachingCache = {
-            overall: 'AI 코칭 분석에 실패했습니다. API 키를 확인해 주세요.',
+            overall: `AI 코칭 실패: ${e.message}`,
             questions: [], speedCoaching: [], accuracyCoaching: []
         };
         const btn = document.getElementById('btnCoachingReport');
@@ -1995,15 +1995,26 @@ ${qLines}
 
 async function _requestCoachingReport(apiKey, prompt) {
     const MODEL = 'gemini-2.5-flash';
-    const SDK   = window._GoogleGenAI;
+
+    // JSON 정규식 추출 (결과에 설명 텍스트가 들어와도 안전하게)
+    const extractJSON = raw => {
+        const clean = raw.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+        // 첫 번째 '{' 부터 마지막 '}' 까지 추출
+        const m = clean.match(/\{[\s\S]*\}/);
+        if (!m) throw new Error(`JSON not found in response. Raw: ${clean.slice(0, 200)}`);
+        return JSON.parse(m[0]);
+    };
+
+    const SDK = window._GoogleGenAI;
     if (SDK) {
         const client   = new SDK({ apiKey });
         const response = await Promise.race([
             client.models.generateContent({ model: MODEL, contents: prompt }),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 30s')), 30000))
         ]);
         const raw = response.text ?? '';
-        return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+        logI('coaching', 'SDK 응답 수신 (' + raw.length + '자)');
+        return extractJSON(raw);
     }
     // raw fetch fallback
     const res = await fetch(
@@ -2015,9 +2026,11 @@ async function _requestCoachingReport(apiKey, prompt) {
     if (res.ok) {
         const json = await res.json();
         const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-        return JSON.parse(raw.replace(/```json\n?/g, '').replace(/```/g, '').trim());
+        logI('coaching', 'fetch 응답 수신 (' + raw.length + '자)');
+        return extractJSON(raw);
     }
-    throw new Error('HTTP' + res.status);
+    const errTxt = await res.text().catch(() => '');
+    throw new Error(`HTTP${res.status}: ${errTxt.slice(0, 120)}`);
 }
 
 function showCoachingReport() {
