@@ -2078,21 +2078,23 @@ async function _requestCoachingReport(apiKey, prompt) {
 }
 
 function showCoachingReport() {
-    const panel  = document.getElementById('coachingReport');
-    const crBody = document.getElementById('crBody');
+    const panel   = document.getElementById('coachingReport');
+    const crBody  = document.getElementById('crBody');
+    const rdPanels = document.getElementById('readingPanels');
     if (!panel) return;
+
+    // 지문/문제 패널 숨기기 (AI 코칭만 표시)
+    if (rdPanels) rdPanels.style.display = 'none';
     panel.classList.remove('hidden');
 
     // 이미 캐시된 경우 바로 표시
     if (_coachingCache && _coachingCache.overall) {
         _renderCoachingReport(_coachingCache);
-        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
     }
 
     // 아직 생성 안 됨 → 로딩 표시 후 자동 실행
     if (crBody) crBody.innerHTML = '<div class="cr-loading">🔄 AI 코칭 리포트 생성 중...</div>';
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     const apiKey = localStorage.getItem('gemini_api_key') || '';
     if (!apiKey) {
@@ -2107,6 +2109,13 @@ function showCoachingReport() {
     const ai = { responseType: {}, fluencyBottleneck: {} };
     _buildAndFetchCoaching(log, totalMs, dwell, fixCounts, regCounts, transitions, efficiency, ai, apiKey)
         .then(() => { if (_coachingCache) _renderCoachingReport(_coachingCache); });
+}
+
+function hideCoachingReport() {
+    const panel    = document.getElementById('coachingReport');
+    const rdPanels = document.getElementById('readingPanels');
+    if (panel)    panel.classList.add('hidden');
+    if (rdPanels) rdPanels.style.display = '';
 }
 
 function _renderCoachingReport(data) {

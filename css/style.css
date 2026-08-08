@@ -1175,11 +1175,10 @@ body {
 
 .cr-panel {
   width: 100%;
-  max-height: 45vh;
+  flex: 1;               /* readingPanels 숨김 시 남은 공간 전체 차지 */
   overflow-y: auto;
   background: #090d1c;
   border-bottom: 1px solid rgba(108,123,255,.25);
-  flex-shrink: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(108,123,255,.4) transparent;
   animation: cr-slide-in .3s ease;
